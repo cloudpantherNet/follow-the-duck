@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "follow-the-duck"
+version = "0.1.0"
+description = "Voice-commanded object search-and-approach demo for the SunFounder PiCar-X (classroom AI demonstration)"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Jorge Leyva" }]
+# The runtime core is standard-library only, on purpose: it must import and
+# test on a laptop with no Pi, no GPIO, and no third-party wheels.
+# Hardware/camera libraries (picarx, robot_hat, picamera2) are *system*
+# packages on the Pi and are imported lazily by the real adapters only.
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+ftd = "follow_the_duck.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.coverage
+
+# Secrets and local configuration — never commit credentials.
+.env
+.env.*
+!.env.example
+
+# Runtime artifacts (status files, recordings, captured frames)
+.ftd/
+*.wav
+*.jpg
+!tests/fixtures/**/*.jpg
+!tests/fixtures/**/*.wav
+
+# OS noise
+.DS_Store

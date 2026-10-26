@@ -1,0 +1,13 @@
+[
+  {"present": 0.1, "floor_left": 0.2, "floor_center": 0.9, "floor_right": 0.3},
+  {"present": 0.1, "floor_center": 0.8},
+  {"present": 0.1, "floor_center": 0.2},
+  {"present": 0.92, "bearing": "center", "proximity": "mid",
+   "floor_left": 0.3, "floor_center": 0.9, "floor_right": 0.3},
+  {"present": 0.95, "bearing": "center", "proximity": "mid",
+   "floor_center": 0.9},
+  {"present": 0.95, "bearing": "center", "proximity": "near",
+   "floor_center": 0.9},
+  {"present": 0.97, "bearing": "center", "proximity": "very_close",
+   "floor_center": 0.9}
+]

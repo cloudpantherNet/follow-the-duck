@@ -1,0 +1,32 @@
+# Follow the Duck — systemd unit (optional).
+# Starts the push-to-talk listener in IDLE. Nothing moves until a command.
+#
+# Install on the Pi:
+#   sudo cp deploy/ftd.service /etc/systemd/system/ftd.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now ftd
+# Stop a mission from any SSH session:  ftd stop   (or: sudo systemctl stop ftd)
+#
+# Note: with no terminal attached there is no keyboard push-to-talk; use
+# `ftd stop` / `ftd find "..."` over SSH, or run `ftd listen` interactively
+# instead of this unit. The unit mainly guarantees a clean IDLE state at boot.
+
+[Unit]
+Description=Follow the Duck (PiCar-X object search, starts IDLE)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=robot
+WorkingDirectory=/home/robot/follow-the-duck
+EnvironmentFile=-/home/robot/follow-the-duck/.env
+ExecStart=/home/robot/follow-the-duck/.venv/bin/ftd listen --loop
+Restart=on-failure
+RestartSec=5
+# On stop/restart the CLI's SIGTERM handler stops the motors first.
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target
