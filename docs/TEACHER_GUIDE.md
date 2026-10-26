@@ -12,7 +12,15 @@
 
 ## Running the demo
 
+**Hands-free (if the ftd service is installed):** just power the robot on.
+After ~30 s it is listening — say clearly, from within ~1 m:
+**"Find the yellow duck."** It beeps when it understands. Watch progress with
+`journalctl -u ftd -f` or `ftd status` over SSH.
+
+**With a laptop (push-to-talk, best in a noisy room):**
+
 ```bash
+sudo systemctl stop ftd      # pause hands-free listening first, frees the mic
 .venv/bin/ftd listen --loop
 ```
 

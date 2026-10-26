@@ -33,8 +33,15 @@ runtime* (`ftd status` → `last_latency`), not promised in advance.
   a short forward arc, which needs free floor ahead.
 
 ## Voice
-* Push-to-talk only (no wake word). Recording quality in a noisy classroom is
-  untested; typed commands are the fallback.
+* Push-to-talk, plus a hands-free mode (systemd) that gates 4 s chunks on a
+  *local loudness threshold* — it is not a wake word. In a noisy classroom the
+  gate will pass non-command noise to Whisper (bounded cost, but quota is
+  spent), and a command spoken across a chunk boundary can be cut in half —
+  repeat it. The threshold needs per-room calibration (`ftd doctor --record`).
+* While a mission runs, the robot is NOT listening; voice cannot stop it.
+  `ftd stop`, Enter, or the power switch are the stop paths.
+* Recording quality in a noisy classroom is untested; typed commands are the
+  fallback.
 * Whisper may mishear; the interpreted target is displayed before any motion,
   and empty/uncertain speech starts nothing.
 

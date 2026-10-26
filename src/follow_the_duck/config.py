@@ -65,6 +65,13 @@ class Config:
     record_seconds: float = 4.0
     record_rate: int = 16000
 
+    # --- Hands-free mode (listening loop at boot, no terminal) --------------
+    hands_free_chunk_s: float = 4.0
+    # Local RMS gate: chunks quieter than this are discarded without any
+    # cloud call. Calibrate per room/microphone (ftd doctor --record prints
+    # the measured level of a test capture).
+    voice_rms_threshold: float = 300.0
+
     # --- Camera gimbal scan -------------------------------------------------
     scan_pan_angles_deg: str = "-35,0,35"  # conservative; servo limit is wider
     tilt_deg: float = -10.0  # look slightly down toward the floor

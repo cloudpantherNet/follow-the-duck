@@ -52,10 +52,14 @@ def _write_pidfile(cfg: Config) -> None:
     atexit.register(lambda: path.unlink(missing_ok=True))
 
 
-def _install_signal_handlers(runtime: Runtime) -> None:
+def _install_signal_handlers(
+    runtime: Runtime, shutdown: Optional[threading.Event] = None
+) -> None:
     def handler(signum, _frame):
         log.info("signal %s -> STOP", signum)
         runtime.mission.request_stop()
+        if shutdown is not None:
+            shutdown.set()
 
     for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
         try:
@@ -88,9 +92,14 @@ def _start_enter_to_stop(runtime: Runtime) -> threading.Event:
     return done
 
 
-def _run_mission(runtime: Runtime, target: str, interactive: bool = True) -> int:
+def _run_mission(
+    runtime: Runtime,
+    target: str,
+    interactive: bool = True,
+    shutdown: Optional[threading.Event] = None,
+) -> int:
     _write_pidfile(runtime.cfg)
-    _install_signal_handlers(runtime)
+    _install_signal_handlers(runtime, shutdown)
     runtime.start()
     stopper = None
     if interactive and sys.stdin.isatty():
@@ -146,8 +155,11 @@ def cmd_listen(args, cfg: Config) -> int:
     microphone = _make_microphone(cfg, args.dry_run)
     try:
         _write_pidfile(cfg)
-        _install_signal_handlers(runtime)
+        shutdown = threading.Event()
+        _install_signal_handlers(runtime, shutdown)
         runtime.start()
+        if args.hands_free:
+            return _hands_free_loop(runtime, microphone, cfg, shutdown)
         while True:
             runtime.status.update(
                 MissionState.IDLE, "Idle. Press Enter to talk, or type a command."
@@ -180,6 +192,48 @@ def cmd_listen(args, cfg: Config) -> int:
                 print("I did not catch a target. Nothing started.")
     finally:
         runtime.shutdown()
+
+
+def _hands_free_loop(
+    runtime: Runtime, microphone, cfg: Config, shutdown: threading.Event
+) -> int:
+    """Laptop-free operation (systemd): keep recording short chunks while
+    IDLE; a locally-loud chunk goes to STT; a parsed FIND starts a mission.
+    SIGTERM (`ftd stop`, `systemctl stop ftd`) exits the loop; motors are
+    stopped by the mission/supervisor, never by the cloud."""
+    from .voiceloop import next_voice_command
+
+    if runtime.speech is None:
+        log.error(
+            "hands-free mode needs speech-to-text: set CLOUDFLARE_ACCOUNT_ID "
+            "and CLOUDFLARE_API_TOKEN"
+        )
+        return 2
+    log.info(
+        "hands-free listening: %.0fs chunks, local RMS gate %.0f",
+        cfg.hands_free_chunk_s, cfg.voice_rms_threshold,
+    )
+    while not shutdown.is_set():
+        runtime.status.update(
+            MissionState.IDLE, "Listening. Say: find the <object>."
+        )
+        command = next_voice_command(microphone, runtime.speech, cfg)
+        if shutdown.is_set():
+            break
+        if command is None:
+            continue
+        if command.kind == CommandKind.FIND:
+            try:
+                runtime.speaker.beep()
+                runtime.speaker.say("Looking for %s" % command.target)
+            except Exception:
+                pass
+            log.info("voice mission: %s", command.target)
+            _run_mission(runtime, command.target,
+                         interactive=sys.stdin.isatty(), shutdown=shutdown)
+        # STOP/CANCEL while idle: already stopped; keep listening.
+    log.info("hands-free loop exiting")
+    return 0
 
 
 def _make_microphone(cfg: Config, dry_run: bool):
@@ -287,6 +341,10 @@ def main(argv: Optional[list] = None) -> int:
     p_listen = sub.add_parser("listen", help="push-to-talk voice command")
     p_listen.add_argument("--loop", action="store_true",
                           help="return to listening after each mission")
+    p_listen.add_argument("--hands-free", action="store_true",
+                          help="no terminal needed: record continuously while "
+                               "idle, local loudness gate, voice starts "
+                               "missions (for systemd); implies --loop")
     p_listen.add_argument("--dry-run", action="store_true")
     p_listen.set_defaults(func=cmd_listen)
 

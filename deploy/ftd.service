@@ -1,19 +1,22 @@
-# Follow the Duck — systemd unit (optional).
-# Starts the push-to-talk listener in IDLE. Nothing moves until a command.
+# Follow the Duck — systemd unit.
+# Starts hands-free listening at boot: the robot sits in IDLE, records short
+# audio chunks, and a local loudness gate decides whether a chunk is worth
+# transcribing ("find the yellow duck" starts a mission). Silence costs no
+# cloud calls. Nothing ever moves at boot without a spoken/typed command.
 #
 # Install on the Pi:
 #   sudo cp deploy/ftd.service /etc/systemd/system/ftd.service
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now ftd
-# Stop a mission from any SSH session:  ftd stop   (or: sudo systemctl stop ftd)
 #
-# Note: with no terminal attached there is no keyboard push-to-talk; use
-# `ftd stop` / `ftd find "..."` over SSH, or run `ftd listen` interactively
-# instead of this unit. The unit mainly guarantees a clean IDLE state at boot.
+# Stop a mission (or the whole service) from any SSH session:
+#   ftd stop                  # SIGTERM: motors stop, loop exits
+#   sudo systemctl stop ftd
+# Watch it live:  journalctl -u ftd -f
 
 [Unit]
-Description=Follow the Duck (PiCar-X object search, starts IDLE)
-After=network-online.target
+Description=Follow the Duck (PiCar-X hands-free voice loop, starts IDLE)
+After=network-online.target sound.target
 Wants=network-online.target
 
 [Service]
@@ -21,12 +24,12 @@ Type=simple
 User=robot
 WorkingDirectory=/home/robot/follow-the-duck
 EnvironmentFile=-/home/robot/follow-the-duck/.env
-ExecStart=/home/robot/follow-the-duck/.venv/bin/ftd listen --loop
+ExecStart=/home/robot/follow-the-duck/.venv/bin/ftd listen --hands-free
 Restart=on-failure
 RestartSec=5
-# On stop/restart the CLI's SIGTERM handler stops the motors first.
+# SIGTERM is handled: motors stop first, then the listen loop exits.
 KillSignal=SIGTERM
-TimeoutStopSec=10
+TimeoutStopSec=15
 
 [Install]
 WantedBy=multi-user.target

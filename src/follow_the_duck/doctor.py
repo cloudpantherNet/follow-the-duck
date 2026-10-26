@@ -136,7 +136,14 @@ def run_checks(cfg: Config, online: bool = False, record: bool = False) -> List[
 
             try:
                 wav = ArecordMicrophone(cfg.mic_device, cfg.record_rate).record_wav(1.0)
-                add(CheckResult("mic-capture", OK, "recorded %d bytes" % len(wav)))
+                from .audio.level import wav_rms
+
+                level = wav_rms(wav)
+                add(CheckResult(
+                    "mic-capture", OK,
+                    "recorded %d bytes, RMS=%.0f (hands-free gate "
+                    "FTD_VOICE_RMS_THRESHOLD=%.0f; speak during the capture "
+                    "to calibrate)" % (len(wav), level, cfg.voice_rms_threshold)))
             except AudioError as exc:
                 add(CheckResult("mic-capture", FAIL, str(exc)))
 

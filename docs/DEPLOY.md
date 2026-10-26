@@ -29,7 +29,7 @@ rsync -av --exclude .venv --exclude .git --exclude .env \
 
 `.env` stays on the Pi and is never overwritten or copied into Git.
 
-## Optional systemd unit (run without a laptop)
+## Systemd unit: hands-free voice at every boot (no laptop)
 
 ```bash
 sudo cp deploy/ftd.service /etc/systemd/system/ftd.service
@@ -38,11 +38,23 @@ sudo systemctl enable --now ftd
 journalctl -u ftd -f          # watch the narration
 ```
 
-The unit starts `ftd listen --loop` in **IDLE**; nothing moves at boot, after
-a crash, or after `systemctl restart` — a mission always needs a new command,
-and the CLI's SIGTERM handler stops the motors on shutdown. Headless caveat:
-with no terminal there is no keyboard push-to-talk, so trigger missions over
-SSH (`ftd find "..."`), stop with `ftd stop`, and check `ftd status`.
+The unit runs `ftd listen --hands-free`: after every boot the robot sits in
+**IDLE** and listens in short chunks (default 4 s). A *local* loudness gate
+(`FTD_VOICE_RMS_THRESHOLD`) discards quiet chunks with **zero cloud calls**;
+only chunks that plausibly contain speech go to Whisper, and only a parsed
+"find the …" starts a mission. Nothing moves at boot, after a crash, or after
+`systemctl restart` — motion always needs a fresh command, and SIGTERM stops
+the motors before the loop exits.
+
+Calibrate the gate once per room: `ftd doctor --record` prints the measured
+RMS of a 1 s capture — run it once in silence and once while speaking, and
+set `FTD_VOICE_RMS_THRESHOLD` between the two.
+
+While the service runs you can still use SSH at any time:
+`ftd stop` (immediate local stop), `ftd status`, or
+`sudo systemctl stop ftd` to pause listening entirely. Voice is **not** a
+stop path — during a mission the robot is not listening; stop with `ftd
+stop`, Enter (if a terminal is attached), or the power switch.
 
 ## Credentials hygiene
 
