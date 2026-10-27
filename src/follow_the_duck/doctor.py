@@ -95,13 +95,26 @@ def run_checks(cfg: Config, online: bool = False, record: bool = False) -> List[
                 for r in readings
             ]
             valid = [c for c in classified if c is not None]
-            level = OK if valid else WARN
-            add(CheckResult(
-                "ultrasonic", level,
-                "readings=%s (valid: %d/3). REMINDER: physically verify the "
-                "sensor is chassis-mounted and does not pan with the camera."
-                % (readings, len(valid)),
-            ))
+            if valid:
+                detail = (
+                    "readings=%s (valid: %d/3). REMINDER: physically verify "
+                    "the sensor is chassis-mounted and does not pan with the "
+                    "camera." % (readings, len(valid))
+                )
+                level = OK
+            else:
+                # SunFounder read(): -1 = no echo start, -2 = echo never
+                # ended. All-invalid means the HAT never saw the echo pulse.
+                detail = (
+                    "readings=%s — NO echo received. The robot will refuse "
+                    "all movement until this is fixed. Power off and check "
+                    "the 4-pin cable from the ultrasonic module to the Robot "
+                    "HAT's ultrasonic port (both ends seated, right port, "
+                    "no bent pins), then re-run doctor and confirm ~30 cm "
+                    "against a flat object." % (readings,)
+                )
+                level = FAIL
+            add(CheckResult("ultrasonic", level, detail))
             try:
                 gray = px.get_grayscale_data()
                 add(CheckResult("grayscale", OK,
