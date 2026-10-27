@@ -72,6 +72,15 @@ class Config:
     # the measured level of a test capture).
     voice_rms_threshold: float = 300.0
 
+    # --- On-device wake word (optional; openWakeWord, runs locally) ----------
+    # Requires the 'wakeword' extra: pip install -e '.[wakeword]'
+    # Only pretrained openWakeWord phrases are available without training a
+    # custom model (e.g. hey_jarvis_v0.1, alexa_v0.1, hey_mycroft_v0.1).
+    wake_word_enabled: bool = False
+    wake_word_model: str = "hey_jarvis_v0.1"  # model name or .onnx file path
+    wake_word_threshold: float = 0.5          # detection score 0..1
+    wake_word_cooldown_s: float = 2.0         # ignore re-triggers this long
+
     # --- Camera gimbal scan -------------------------------------------------
     scan_pan_angles_deg: str = "-35,0,35"  # conservative; servo limit is wider
     tilt_deg: float = -10.0  # look slightly down toward the floor

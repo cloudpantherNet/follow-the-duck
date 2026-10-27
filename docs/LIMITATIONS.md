@@ -34,10 +34,16 @@ runtime* (`ftd status` → `last_latency`), not promised in advance.
 
 ## Voice
 * Push-to-talk, plus a hands-free mode (systemd) that gates 4 s chunks on a
-  *local loudness threshold* — it is not a wake word. In a noisy classroom the
-  gate will pass non-command noise to Whisper (bounded cost, but quota is
-  spent), and a command spoken across a chunk boundary can be cut in half —
-  repeat it. The threshold needs per-room calibration (`ftd doctor --record`).
+  *local loudness threshold*. In a noisy classroom the gate will pass
+  non-command noise to Whisper (bounded cost, but quota is spent), and a
+  command spoken across a chunk boundary can be cut in half — repeat it. The
+  threshold needs per-room calibration (`ftd doctor --record`).
+* The optional on-device wake word (openWakeWord) supports **pretrained
+  phrases only** — "hey jarvis", not "hey duck"; a custom phrase needs model
+  training. Detection quality on the Pi 3 with the robot-HAT microphone
+  (distance, noise, CPU load during missions) is **untested on hardware**;
+  threshold tuning is expected. If the backend fails to load, the service
+  falls back to the loudness gate.
 * While a mission runs, the robot is NOT listening; voice cannot stop it.
   `ftd stop`, Enter, or the power switch are the stop paths.
 * Recording quality in a noisy classroom is untested; typed commands are the

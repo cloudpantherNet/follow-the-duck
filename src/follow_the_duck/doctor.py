@@ -156,6 +156,23 @@ def run_checks(cfg: Config, online: bool = False, record: bool = False) -> List[
         add(CheckResult("speaker", OK,
                         "playback devices present; FTD_SPEAKER_DEVICE=%s" % cfg.speaker_device))
 
+    # --- Wake word (local, optional) ---------------------------------------------
+    if cfg.wake_word_enabled:
+        from .wakeword import OpenWakeWordDetector, WakeWordError
+
+        try:
+            OpenWakeWordDetector(
+                cfg.wake_word_model, cfg.wake_word_threshold, cfg.wake_word_cooldown_s
+            )
+            add(CheckResult("wake-word", OK,
+                            "model %r loaded (on-device)" % cfg.wake_word_model))
+        except WakeWordError as exc:
+            add(CheckResult("wake-word", FAIL, str(exc)))
+    else:
+        add(CheckResult("wake-word", WARN,
+                        "disabled (FTD_WAKE_WORD_ENABLED=false); hands-free "
+                        "mode uses the loudness gate"))
+
     # --- Online provider smoke tests (image + audio, still no motion) -----------
     if online:
         results.extend(_online_checks(cfg))

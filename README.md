@@ -99,6 +99,7 @@ the robot locally and immediately — the cloud is never the stop path.
 | `ftd find "yellow duck"` | run a mission for a typed target |
 | `ftd listen [--loop]` | push-to-talk: Enter records, speech picks the target |
 | `ftd listen --hands-free` | no terminal: listens in a loop with a local loudness gate; used by the systemd unit for voice control at boot |
+| `ftd listen --hands-free --wake-word` | adds an on-device wake word ("hey jarvis", openWakeWord): audio goes to the cloud only after the phrase fires locally |
 | `ftd stop` | stop a running ftd process (local SIGTERM, latches motors) |
 | `ftd status` | last mission state/message/latencies |
 | `ftd doctor [--online] [--record]` | health checks; never commands wheels |

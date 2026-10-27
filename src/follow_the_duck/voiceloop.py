@@ -15,9 +15,11 @@ from typing import Optional
 
 from .audio.base import AudioError, Microphone
 from .audio.level import wav_rms
+from .audio.stream import AudioStream
 from .config import Config
 from .intent import Command, CommandKind, parse_command
 from .providers.base import ProviderError, SpeechProvider
+from .wakeword import WakeWordDetector
 
 log = logging.getLogger("ftd.voice")
 
@@ -43,6 +45,63 @@ def next_voice_command(
         transcription = speech.transcribe(wav, cfg.stt_language)
     except ProviderError as exc:
         log.warning("hands-free transcription failed: %s", exc)
+        return None
+    text = transcription.text.strip()
+    if not text:
+        return None
+    log.info("heard: %r", text)
+    command = parse_command(text)
+    if command.kind == CommandKind.NONE:
+        log.info("not a command; ignoring")
+        return None
+    return command
+
+
+def wake_word_command(
+    stream: AudioStream,
+    detector: WakeWordDetector,
+    speech: SpeechProvider,
+    cfg: Config,
+    should_stop=None,
+    on_wake=None,
+) -> Optional[Command]:
+    """Wake-word cycle: feed 80 ms frames to the on-device detector; when the
+    wake word fires, record the command utterance from the same stream and
+    transcribe it. Audio reaches the cloud only AFTER a local wake detection.
+
+    ``should_stop`` is polled between frames (each ~80 ms) so SIGTERM exits
+    promptly; ``on_wake`` runs right after detection (beep/status). Returns a
+    Command, or None for 'keep listening'. Never raises on audio/STT faults —
+    an unrecoverable stream error also returns None and the caller rebuilds
+    the stream."""
+    try:
+        while True:
+            if should_stop is not None and should_stop():
+                return None
+            frame = stream.read_frame()
+            if detector.feed(frame):
+                break
+    except AudioError as exc:
+        log.warning("wake-word stream failed: %s", exc)
+        return None
+    log.info("wake word detected")
+    if on_wake is not None:
+        try:
+            on_wake()
+        except Exception:
+            pass
+    try:
+        wav = stream.record_wav(cfg.record_seconds)
+    except AudioError as exc:
+        log.warning("command recording failed: %s", exc)
+        return None
+    if wav_rms(wav) < cfg.voice_rms_threshold:
+        log.info("nothing said after the wake word; back to listening")
+        return None
+    try:
+        transcription = speech.transcribe(wav, cfg.stt_language)
+    except ProviderError as exc:
+        log.warning("transcription failed: %s", exc)
         return None
     text = transcription.text.strip()
     if not text:

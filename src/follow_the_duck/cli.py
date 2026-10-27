@@ -151,6 +151,8 @@ def cmd_replay(args, cfg: Config) -> int:
 
 
 def cmd_listen(args, cfg: Config) -> int:
+    if getattr(args, "wake_word", False):
+        cfg.wake_word_enabled = True
     runtime = build_runtime(cfg, dry_run=args.dry_run)
     microphone = _make_microphone(cfg, args.dry_run)
     try:
@@ -209,6 +211,11 @@ def _hands_free_loop(
             "and CLOUDFLARE_API_TOKEN"
         )
         return 2
+    if cfg.wake_word_enabled:
+        rc = _wake_word_loop(runtime, cfg, shutdown)
+        if rc is not None:
+            return rc
+        log.warning("wake word unavailable; falling back to loudness-gate mode")
     log.info(
         "hands-free listening: %.0fs chunks, local RMS gate %.0f",
         cfg.hands_free_chunk_s, cfg.voice_rms_threshold,
@@ -233,6 +240,65 @@ def _hands_free_loop(
                          interactive=sys.stdin.isatty(), shutdown=shutdown)
         # STOP/CANCEL while idle: already stopped; keep listening.
     log.info("hands-free loop exiting")
+    return 0
+
+
+def _wake_word_loop(
+    runtime: Runtime, cfg: Config, shutdown: threading.Event
+) -> Optional[int]:
+    """On-device wake word (openWakeWord): audio stays local until the wake
+    phrase fires, then one command utterance goes to STT. Returns None if the
+    detector can't be built (caller falls back to the loudness-gate mode)."""
+    from .audio.base import AudioError
+    from .audio.stream import ArecordStream
+    from .voiceloop import wake_word_command
+    from .wakeword import OpenWakeWordDetector, WakeWordError
+
+    try:
+        detector = OpenWakeWordDetector(
+            cfg.wake_word_model, cfg.wake_word_threshold, cfg.wake_word_cooldown_s
+        )
+    except WakeWordError as exc:
+        log.warning("wake word unavailable: %s", exc)
+        return None
+    phrase = cfg.wake_word_model.split("_v")[0].replace("_", " ")
+    log.info("wake word armed: say %r, then the command", phrase)
+
+    def on_wake() -> None:
+        runtime.status.update(MissionState.LISTENING, "Yes? Listening...")
+        runtime.speaker.beep()
+
+    while not shutdown.is_set():
+        runtime.status.update(
+            MissionState.IDLE, 'Say "%s", then: find the <object>.' % phrase
+        )
+        try:
+            stream = ArecordStream(cfg.mic_device)
+        except AudioError as exc:
+            log.warning("microphone stream failed: %s; retrying", exc)
+            shutdown.wait(2.0)
+            continue
+        try:
+            command = wake_word_command(
+                stream, detector, runtime.speech, cfg,
+                should_stop=shutdown.is_set, on_wake=on_wake,
+            )
+        finally:
+            stream.close()  # free the device for the next cycle / mission
+        if shutdown.is_set():
+            break
+        if command is None:
+            continue
+        if command.kind == CommandKind.FIND:
+            try:
+                runtime.speaker.say("Looking for %s" % command.target)
+            except Exception:
+                pass
+            log.info("voice mission: %s", command.target)
+            _run_mission(runtime, command.target,
+                         interactive=sys.stdin.isatty(), shutdown=shutdown)
+        # STOP/CANCEL while idle: already stopped; keep listening.
+    log.info("wake-word loop exiting")
     return 0
 
 
@@ -345,6 +411,10 @@ def main(argv: Optional[list] = None) -> int:
                           help="no terminal needed: record continuously while "
                                "idle, local loudness gate, voice starts "
                                "missions (for systemd); implies --loop")
+    p_listen.add_argument("--wake-word", action="store_true",
+                          help="with --hands-free: require the on-device wake "
+                               "word (openWakeWord) before any audio goes to "
+                               "the cloud; same as FTD_WAKE_WORD_ENABLED=true")
     p_listen.add_argument("--dry-run", action="store_true")
     p_listen.set_defaults(func=cmd_listen)
 

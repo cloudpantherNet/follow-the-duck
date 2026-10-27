@@ -18,6 +18,9 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=7"]
+# On-device wake word (Pi): openWakeWord + onnxruntime. Optional — everything
+# else works without it (loudness-gate hands-free mode is the fallback).
+wakeword = ["openwakeword>=0.6"]
 
 [project.scripts]
 ftd = "follow_the_duck.cli:main"

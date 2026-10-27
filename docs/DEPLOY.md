@@ -50,6 +50,30 @@ Calibrate the gate once per room: `ftd doctor --record` prints the measured
 RMS of a 1 s capture — run it once in silence and once while speaking, and
 set `FTD_VOICE_RMS_THRESHOLD` between the two.
 
+### Optional: on-device wake word ("hey jarvis")
+
+With the wake word enabled, audio never leaves the Pi until the phrase is
+detected locally (openWakeWord, built for the Pi 3) — in a noisy room this
+beats the loudness gate on both quota and false triggers:
+
+```bash
+cd ~/follow-the-duck
+.venv/bin/pip install -e '.[wakeword]'                     # openwakeword + onnxruntime
+.venv/bin/python -m follow_the_duck.wakeword --download    # fetch the models once
+echo 'FTD_WAKE_WORD_ENABLED=true' >> .env
+.venv/bin/ftd doctor                                       # wake-word check must be OK
+sudo systemctl restart ftd
+```
+
+Usage: say **"hey jarvis"** → the robot beeps → say **"find the yellow
+duck"**. Only pretrained openWakeWord phrases are available
+(`FTD_WAKE_WORD_MODEL`: `hey_jarvis_v0.1`, `alexa_v0.1`, `hey_mycroft_v0.1`);
+a custom "hey duck" would require training a model with openWakeWord's
+pipeline (future work). Tune `FTD_WAKE_WORD_THRESHOLD` (raise it if it
+false-triggers, lower if it seems deaf). If the wake-word backend is missing
+or fails to load, the service logs a warning and automatically falls back to
+the loudness-gate mode — it never ends up deaf and silent.
+
 While the service runs you can still use SSH at any time:
 `ftd stop` (immediate local stop), `ftd status`, or
 `sudo systemctl stop ftd` to pause listening entirely. Voice is **not** a
