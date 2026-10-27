@@ -182,6 +182,17 @@ def run_checks(cfg: Config, online: bool = False, record: bool = False) -> List[
                         "disabled (FTD_WAKE_WORD_ENABLED=false); hands-free "
                         "mode uses the loudness gate"))
 
+    # --- Telemetry dashboard (optional) --------------------------------------------
+    if cfg.telemetry_url and cfg.telemetry_token:
+        add(CheckResult("telemetry", OK,
+                        "dashboard configured: %s (token hidden)" % cfg.telemetry_url))
+    elif cfg.telemetry_url or cfg.telemetry_token:
+        add(CheckResult("telemetry", WARN,
+                        "set BOTH FTD_TELEMETRY_URL and FTD_TELEMETRY_TOKEN"))
+    else:
+        add(CheckResult("telemetry", WARN,
+                        "mission dashboard disabled (see deploy/worker/)"))
+
     # --- Online provider smoke tests (image + audio, still no motion) -----------
     if online:
         results.extend(_online_checks(cfg))
@@ -232,6 +243,23 @@ def _online_checks(cfg: Config) -> List[CheckResult]:
             "answered in %.2fs (1s silence -> %r)" % (elapsed, transcription.text)))
     except ProviderError as exc:
         results.append(CheckResult("whisper", FAIL, str(exc)))
+
+    if cfg.telemetry_url and cfg.telemetry_token:
+        import json
+        import urllib.request
+
+        try:
+            request = urllib.request.Request(
+                cfg.telemetry_url.rstrip("/") + "/api/health",
+                headers={"Authorization": "Bearer " + cfg.telemetry_token},
+            )
+            with urllib.request.urlopen(request, timeout=10) as resp:
+                ok = json.loads(resp.read()).get("ok") is True
+            results.append(CheckResult(
+                "telemetry-live", OK if ok else FAIL,
+                "dashboard reachable" if ok else "unexpected health response"))
+        except Exception as exc:
+            results.append(CheckResult("telemetry-live", FAIL, str(exc)))
     return results
 
 

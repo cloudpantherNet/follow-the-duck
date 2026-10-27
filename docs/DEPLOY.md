@@ -99,6 +99,46 @@ While the service runs you can still use SSH at any time:
 stop path — during a mission the robot is not listening; stop with `ftd
 stop`, Enter (if a terminal is attached), or the power switch.
 
+## Mission dashboard (Cloudflare Worker) — watch what the robot thinks
+
+For the classroom: a web page showing, live, every camera frame, the AI's
+answers (presence %, bearing, floor-clear bars), the ranked movement
+candidates, and each motor decision with the sonar reading. Great for
+explaining *why* the robot did something — and for debugging "it didn't see
+the duck".
+
+Deploy once (dashboard route, no tooling needed):
+
+1. Cloudflare dashboard → **Workers & Pages → Create Worker**, paste
+   `deploy/worker/worker.js`, name it e.g. `ftd-dashboard`.
+2. Worker → **Settings → Variables and Secrets**: add secret `FTD_TOKEN`
+   (any long random string, e.g. `openssl rand -hex 24`).
+3. Worker → **Settings → Bindings**: add a **KV namespace** binding named
+   `FTD_LOG` (create a new namespace).
+
+(CLI alternative: `cd deploy/worker && npx wrangler kv namespace create
+FTD_LOG`, paste the id into `wrangler.toml`, `npx wrangler deploy`,
+`npx wrangler secret put FTD_TOKEN`.)
+
+Then on the robot, in `.env`:
+
+```bash
+FTD_TELEMETRY_URL=https://ftd-dashboard.<your-account>.workers.dev
+FTD_TELEMETRY_TOKEN=<the same secret>
+```
+
+Verify with `ftd doctor --online` (checks `/api/health`), run a mission, and
+open the Worker URL in a browser — enter the token once (stored locally).
+
+Notes:
+* Telemetry is strictly best-effort: a slow or dead dashboard never delays a
+  mission (bounded queue on a background thread; overflow events are dropped).
+* Camera frames are uploaded to your Worker; set
+  `FTD_TELEMETRY_SEND_IMAGES=false` to send numbers only. Events auto-expire
+  after 7 days (KV TTL) — no long-term retention.
+* KV free tier allows ~1,000 writes/day ≈ 25–30 missions/day; each event is
+  one write. The Worker caps batches (50) and event size (~400 KB).
+
 ## Credentials hygiene
 
 * `.env` is chmod 600, gitignored, and lives only on the Pi (and your Mac if

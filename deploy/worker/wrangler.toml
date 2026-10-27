@@ -1,0 +1,14 @@
+# Follow the Duck dashboard — wrangler config.
+#
+#   cd deploy/worker
+#   npx wrangler kv namespace create FTD_LOG      # paste the id below
+#   npx wrangler deploy
+#   npx wrangler secret put FTD_TOKEN             # same value as the robot's
+#                                                 # FTD_TELEMETRY_TOKEN
+name = "ftd-dashboard"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+
+[[kv_namespaces]]
+binding = "FTD_LOG"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"

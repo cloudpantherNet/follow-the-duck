@@ -42,6 +42,7 @@ from .planner import best_feasible, rank_viewpoints
 from .providers.base import ProviderError
 from .statuslog import StatusBoard
 from .supervisor import MotorSupervisor
+from .telemetry import EventSink
 from .tracker import TargetTracker
 
 log = logging.getLogger("ftd.mission")
@@ -60,6 +61,7 @@ class MissionController:
         camera: Camera,
         perceiver: Perceiver,
         status: StatusBoard,
+        sink: Optional[EventSink] = None,
     ) -> None:
         self._cfg = cfg
         self._clock = clock
@@ -68,6 +70,7 @@ class MissionController:
         self._camera = camera
         self._perceiver = perceiver
         self._status = status
+        self._sink = sink
         self._stop_requested = threading.Event()
         self._mission_id = ""
         self._frame_counter = 0
@@ -106,6 +109,7 @@ class MissionController:
         arrival_confirms = 0
 
         self._supervisor.arm(self._mission_id)
+        self._emit("mission_start", target=target)
         self._status.update(
             MissionState.SCANNING,
             "Searching for: %s" % target,
@@ -121,6 +125,9 @@ class MissionController:
         def finish(final: MissionState, message: str) -> MissionStatus:
             self._supervisor.stop("mission finished: %s" % final.value)
             self._center_gimbal()
+            self._emit("mission_end", state=final.value, message=message,
+                       steps=steps, vision_calls=vision_calls,
+                       elapsed_s=round(self._clock.now() - started, 1))
             self._status.update(
                 final,
                 message,
@@ -200,6 +207,9 @@ class MissionController:
                 if found is not None:
                     approach_obs = found
                     arrival_confirms = 0
+                    self._emit("state", state="APPROACHING",
+                               message="target acquired",
+                               bearing=found.bearing.value, pan_deg=found.pan_deg)
                     self._status.update(
                         MissionState.APPROACHING, "Target seen! Moving closer.", say=True
                     )
@@ -217,11 +227,20 @@ class MissionController:
             if state is MissionState.SEARCHING:
                 candidates = rank_viewpoints(self._pending_scan, list(history), self._cfg)
                 choice = best_feasible(candidates)
+                self._emit("decision", decision="reposition_ranking",
+                           candidates=[{
+                               "direction": c.direction, "score": c.score,
+                               "floor_p": round(c.floor_p, 3),
+                               "feasible": c.feasible, "reason": c.reason,
+                           } for c in candidates],
+                           chosen=choice.direction if choice else None)
                 if choice is None:
-                    return finish(
-                        MissionState.BLOCKED,
-                        "Blocked — no clear floor to explore. Please reposition me.",
-                    )
+                    message = "Blocked — no clear floor to explore. Please reposition me."
+                    if blocked_retries:
+                        message += (" (Note: earlier moves were refused for "
+                                    "invalid distance readings — also check the "
+                                    "ultrasonic sensor with: ftd doctor.)")
+                    return finish(MissionState.BLOCKED, message)
                 self._status.update(
                     MissionState.SEARCHING,
                     "Moving toward open floor (%s)." % choice.direction,
@@ -240,6 +259,13 @@ class MissionController:
                 blocked_retries += 1
                 log.info("move rejected (%s); retry %d", reason, blocked_retries)
                 if blocked_retries >= _MAX_BLOCKED_RETRIES:
+                    if "range" in reason:
+                        return finish(
+                            MissionState.BLOCKED,
+                            "Blocked — my distance sensor is not giving valid "
+                            "readings, so I will not move. Check the ultrasonic "
+                            "sensor (run: ftd doctor).",
+                        )
                     return finish(
                         MissionState.BLOCKED,
                         "Blocked — something is too close in front. Please reposition me.",
@@ -412,6 +438,21 @@ class MissionController:
         observation, latency = self._perceiver.perceive(frame, target, self._mission_id)
         self._supervisor.heartbeat()
         self._status.update(last_latency=latency.as_dict())
+        self._emit(
+            "observation",
+            frame_id=frame.frame_id,
+            pan_deg=pan_deg,
+            target=target,
+            presence=observation.presence.value,
+            confidence=round(observation.confidence, 3),
+            bearing=observation.bearing.value,
+            bearing_confidence=round(observation.bearing_confidence, 3),
+            proximity=observation.proximity.value,
+            floor_clear={k: round(v, 3) for k, v in observation.floor_clear.items()},
+            ambiguity=round(observation.ambiguity, 3),
+            latency=latency.as_dict(),
+            jpeg=frame.jpeg,
+        )
         return observation
 
     def _accept(self, obs: Observation) -> bool:
@@ -440,7 +481,26 @@ class MissionController:
             issued_at=self._clock.now(),
             ttl_s=self._cfg.command_ttl_s,
         )
-        return self._supervisor.execute(command)
+        ok, reason = self._supervisor.execute(command)
+        self._emit("move", seq=self._seq, steer_deg=round(steer_deg, 1),
+                   speed=speed, duration_s=self._cfg.pulse_s, ok=ok, reason=reason,
+                   range_cm=self._supervisor.fresh_valid_range_cm())
+        return ok, reason
+
+    def _emit(self, kind: str, **fields) -> None:
+        """Telemetry is strictly best-effort; it can never break a mission."""
+        if self._sink is None:
+            return
+        try:
+            event: dict = {
+                "kind": kind,
+                "mission_id": self._mission_id,
+                "t": round(self._clock.now(), 3),
+            }
+            event.update(fields)
+            self._sink.emit(event)
+        except Exception:
+            pass
 
 
 def _pan_name(pan_deg: float) -> str:

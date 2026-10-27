@@ -116,6 +116,15 @@ the robot locally and immediately — the cloud is never the stop path.
 | `ftd replay SCRIPT [TARGET]` | deterministic mock mission from a JSON script |
 | `--dry-run` | mock hardware/camera anywhere |
 
+## Mission dashboard (watch the robot think)
+
+Optional Cloudflare Worker (`deploy/worker/`) that receives every frame, the
+AI's typed answers, the ranked movement candidates, and each motor decision,
+and serves a live classroom web UI. Setup in `docs/DEPLOY.md` ("Mission
+dashboard"); on the robot it's two `.env` lines (`FTD_TELEMETRY_URL`,
+`FTD_TELEMETRY_TOKEN`). Telemetry is best-effort by design — a dead dashboard
+never slows or stops a mission.
+
 ## Configuration & credentials
 
 Everything is configured through `FTD_*` environment variables or a local

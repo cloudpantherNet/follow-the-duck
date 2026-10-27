@@ -25,6 +25,7 @@ from .providers.base import ProviderError, SpeechProvider, VisionProvider
 from .providers.mock import ScriptedVision, clef_answers
 from .statuslog import StatusBoard
 from .supervisor import MotorSupervisor, SensorPoller
+from .telemetry import EventSink, TelemetryClient
 
 
 def _picarx_available() -> bool:
@@ -46,6 +47,7 @@ class Runtime:
     supervisor: MotorSupervisor
     status: StatusBoard
     mission: MissionController
+    sink: Optional[EventSink] = None
 
     def start(self) -> None:
         self.poller.start()
@@ -56,6 +58,11 @@ class Runtime:
             self.supervisor.shutdown()
         finally:
             self.poller.stop()
+            if self.sink is not None:
+                try:
+                    self.sink.close()
+                except Exception:
+                    pass
             try:
                 self.camera.close()
             except Exception:
@@ -142,8 +149,17 @@ def build_runtime(
     supervisor = MotorSupervisor(chassis, poller, cfg, clock)
     status = StatusBoard(cfg.runtime_dir, speaker)
     perceiver = Perceiver(vision, cfg, clock)
-    mission = MissionController(cfg, clock, chassis, supervisor, camera, perceiver, status)
+    sink: Optional[EventSink] = None
+    if cfg.telemetry_url and cfg.telemetry_token:
+        sink = TelemetryClient(
+            cfg.telemetry_url, cfg.telemetry_token,
+            send_images=cfg.telemetry_send_images,
+        )
+    mission = MissionController(
+        cfg, clock, chassis, supervisor, camera, perceiver, status, sink=sink
+    )
     return Runtime(
+        sink=sink,
         cfg=cfg,
         clock=clock,
         chassis=chassis,
