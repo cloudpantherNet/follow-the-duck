@@ -24,7 +24,14 @@ import urllib.error
 import urllib.request
 from typing import Dict, List, Optional
 
+from . import __version__
+
 log = logging.getLogger("ftd.telemetry")
+
+#: Cloudflare's bot protection 403s urllib's default "Python-urllib/x.y"
+#: user agent (error 1010) before requests ever reach the Worker, so every
+#: HTTP client in this project identifies itself explicitly.
+USER_AGENT = "follow-the-duck/%s" % __version__
 
 
 class EventSink:
@@ -135,12 +142,29 @@ class TelemetryClient(EventSink):
                 headers={
                     "Authorization": "Bearer " + self._token,
                     "Content-Type": "application/json",
+                    "User-Agent": USER_AGENT,
                 },
                 method="POST",
             )
             with urllib.request.urlopen(request, timeout=self._timeout_s) as resp:
                 resp.read()
             self.sent += len(batch)
+        except urllib.error.HTTPError as exc:
+            self.failed += len(batch)
+            if not self._warned:
+                self._warned = True
+                snippet = ""
+                try:
+                    snippet = exc.read(200).decode("utf-8", "replace")
+                except Exception:
+                    pass
+                log.warning(
+                    "telemetry upload failing (HTTP %s: %s) — missions "
+                    "continue, events are dropped. 401=token mismatch; "
+                    "403=blocked before the Worker (check Cloudflare Access/"
+                    "bot settings on the workers.dev URL)",
+                    exc.code, snippet.strip()[:200],
+                )
         except (urllib.error.URLError, OSError, ValueError) as exc:
             self.failed += len(batch)
             if not self._warned:

@@ -97,12 +97,15 @@ def _post_json(url: str, token: str, payload: dict, timeout_s: float) -> dict:
     body = json.dumps(payload).encode("utf-8")
     if len(body) > _MAX_BODY_BYTES:
         raise ProviderError("request body exceeds 13 MiB limit")
+    from ..telemetry import USER_AGENT
+
     request = urllib.request.Request(
         url,
         data=body,
         headers={
             "Authorization": "Bearer " + token,
             "Content-Type": "application/json",
+            "User-Agent": USER_AGENT,
         },
         method="POST",
     )

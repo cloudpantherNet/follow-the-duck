@@ -261,10 +261,15 @@ def _online_checks(cfg: Config) -> List[CheckResult]:
         import json
         import urllib.request
 
+        from .telemetry import USER_AGENT
+
         try:
             request = urllib.request.Request(
                 cfg.telemetry_url.rstrip("/") + "/api/health",
-                headers={"Authorization": "Bearer " + cfg.telemetry_token},
+                headers={
+                    "Authorization": "Bearer " + cfg.telemetry_token,
+                    "User-Agent": USER_AGENT,
+                },
             )
             with urllib.request.urlopen(request, timeout=10) as resp:
                 ok = json.loads(resp.read()).get("ok") is True
