@@ -113,30 +113,27 @@ if [ "$WAKEWORD_OK" -eq 1 ] && ! grep -q '^FTD_WAKE_WORD_ENABLED=' .env; then
   echo "enabled wake word in .env (say 'hey jarvis' before commands)"
 fi
 get_env() { grep "^$1=" .env | head -1 | cut -d= -f2-; }
+set_env() {  # KEY VALUE: replace the line if present, append otherwise
+  if grep -q "^$1=" .env; then
+    sed -i.bak "s|^$1=.*|$1=$2|" .env && rm -f .env.bak
+  else
+    echo "$1=$2" >> .env
+  fi
+}
+ask_env() {  # KEY PROMPT [hidden] — ask only when the value is missing
+  [ -n "$(get_env "$1")" ] && return 0
+  printf '%s (Enter to skip): ' "$2"
+  if [ "${3:-}" = "hidden" ]; then read -rs VALUE; echo; else read -r VALUE; fi
+  [ -n "$VALUE" ] && set_env "$1" "$VALUE"
+  return 0
+}
 if [ "$ASSUME_YES" -eq 0 ] && [ -t 0 ]; then
-  if [ -z "$(get_env CLOUDFLARE_ACCOUNT_ID)" ]; then
-    printf 'Cloudflare account ID (Enter to skip): '
-    read -r ACCT
-    [ -n "$ACCT" ] && sed -i.bak "s|^CLOUDFLARE_ACCOUNT_ID=.*|CLOUDFLARE_ACCOUNT_ID=$ACCT|" .env
+  ask_env CLOUDFLARE_ACCOUNT_ID 'Cloudflare account ID (32 hex chars)'
+  ask_env CLOUDFLARE_API_TOKEN 'Cloudflare API token, Workers AI permission (hidden)' hidden
+  ask_env FTD_TELEMETRY_URL 'Mission dashboard Worker URL (from deploy/worker/deploy.sh)'
+  if [ -n "$(get_env FTD_TELEMETRY_URL)" ]; then
+    ask_env FTD_TELEMETRY_TOKEN 'Dashboard FTD_TOKEN (hidden)' hidden
   fi
-  if [ -z "$(get_env CLOUDFLARE_API_TOKEN)" ]; then
-    printf 'Cloudflare API token, Workers AI permission (hidden; Enter to skip): '
-    read -rs TOKEN
-    echo
-    [ -n "$TOKEN" ] && sed -i.bak "s|^CLOUDFLARE_API_TOKEN=.*|CLOUDFLARE_API_TOKEN=$TOKEN|" .env
-  fi
-  if ! grep -q '^FTD_TELEMETRY_URL=' .env; then
-    printf 'Mission dashboard Worker URL (from deploy/worker/deploy.sh; Enter to skip): '
-    read -r TURL
-    if [ -n "$TURL" ]; then
-      echo "FTD_TELEMETRY_URL=$TURL" >> .env
-      printf 'Dashboard FTD_TOKEN (hidden): '
-      read -rs TTOKEN
-      echo
-      [ -n "$TTOKEN" ] && echo "FTD_TELEMETRY_TOKEN=$TTOKEN" >> .env
-    fi
-  fi
-  rm -f .env.bak
 fi
 if [ -z "$(get_env CLOUDFLARE_ACCOUNT_ID)" ] || [ -z "$(get_env CLOUDFLARE_API_TOKEN)" ]; then
   warn "Cloudflare credentials not set — voice and vision will stay offline"
