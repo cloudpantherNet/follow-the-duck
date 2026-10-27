@@ -1,0 +1,14 @@
+{
+  "name": "ftd-dashboard",
+  "private": true,
+  "description": "Follow the Duck mission dashboard (Cloudflare Worker)",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "tail": "wrangler tail",
+    "secret": "wrangler secret put FTD_TOKEN"
+  },
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}

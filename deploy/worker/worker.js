@@ -5,10 +5,10 @@
  * decisions); this Worker stores them in KV and serves a live web UI so a
  * classroom can watch what the robot saw and why it moved.
  *
- * Deploy (dashboard): Workers & Pages -> Create Worker -> paste this file.
- *   1. Settings -> Variables -> add secret FTD_TOKEN (any long random string)
- *   2. Settings -> Bindings -> KV namespace, variable name FTD_LOG
- * Deploy (CLI): cd deploy/worker && npx wrangler deploy  (see wrangler.toml)
+ * Deploy: ./deploy.sh (first time; creates KV, sets secret, prints robot
+ * .env lines). Redeploys / CI pipelines: npm run deploy (= wrangler deploy).
+ * Manual dashboard paste also works: create a Worker with this file, add
+ * secret FTD_TOKEN and a KV binding named FTD_LOG.
  *
  * Robot .env:
  *   FTD_TELEMETRY_URL=https://<worker-name>.<account>.workers.dev

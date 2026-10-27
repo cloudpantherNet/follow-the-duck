@@ -1,13 +1,17 @@
 # Follow the Duck dashboard — wrangler config.
 #
-#   cd deploy/worker
-#   npx wrangler kv namespace create FTD_LOG      # paste the id below
-#   npx wrangler deploy
-#   npx wrangler secret put FTD_TOKEN             # same value as the robot's
-#                                                 # FTD_TELEMETRY_TOKEN
+# First deploy:  ./deploy.sh   (creates the KV namespace, fills in the id
+#                               below, deploys, sets the FTD_TOKEN secret)
+# Redeploys:     npm run deploy          (or: npx wrangler deploy)
+#
+# Commit this file after deploy.sh fills in the KV id, so CI pipelines
+# (e.g. Cloudflare Workers Builds) can deploy without manual steps.
 name = "ftd-dashboard"
 main = "worker.js"
 compatibility_date = "2026-10-01"
+
+# Keep dashboard-managed secrets (FTD_TOKEN) across wrangler deploys.
+keep_vars = true
 
 [[kv_namespaces]]
 binding = "FTD_LOG"

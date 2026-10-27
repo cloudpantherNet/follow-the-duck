@@ -107,7 +107,34 @@ candidates, and each motor decision with the sonar reading. Great for
 explaining *why* the robot did something — and for debugging "it didn't see
 the duck".
 
-Deploy once (dashboard route, no tooling needed):
+### Deploy — one command (recommended)
+
+```bash
+cd deploy/worker && ./deploy.sh
+```
+
+Requires Node 18+; authenticates via `wrangler login` (browser) or
+`CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID` env vars. The script creates
+the `FTD_LOG` KV namespace, writes its id into `wrangler.toml` (**commit that
+change**), deploys, sets the `FTD_TOKEN` secret (auto-generated, or pass your
+own via the `FTD_TOKEN` env var), and prints the exact `.env` lines for the
+robot. Idempotent — re-running just redeploys.
+
+### Deploy — CI / Workers Builds pipeline
+
+After the first `deploy.sh` run has committed the KV id, redeploys are plain:
+
+```bash
+cd deploy/worker && npm run deploy        # = npx wrangler deploy
+```
+
+To let Cloudflare build on every push (**Workers Builds**): Worker →
+Settings → Build → connect the Git repository, set **root directory**
+`deploy/worker`, deploy command `npx wrangler deploy`. The `FTD_TOKEN`
+secret and KV binding survive redeploys (`keep_vars` is set; bindings live
+in the committed `wrangler.toml`).
+
+### Deploy — no tooling (dashboard paste)
 
 1. Cloudflare dashboard → **Workers & Pages → Create Worker**, paste
    `deploy/worker/worker.js`, name it e.g. `ftd-dashboard`.
@@ -115,10 +142,6 @@ Deploy once (dashboard route, no tooling needed):
    (any long random string, e.g. `openssl rand -hex 24`).
 3. Worker → **Settings → Bindings**: add a **KV namespace** binding named
    `FTD_LOG` (create a new namespace).
-
-(CLI alternative: `cd deploy/worker && npx wrangler kv namespace create
-FTD_LOG`, paste the id into `wrangler.toml`, `npx wrangler deploy`,
-`npx wrangler secret put FTD_TOKEN`.)
 
 Then on the robot, in `.env`:
 

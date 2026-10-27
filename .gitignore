@@ -22,5 +22,9 @@ venv/
 !tests/fixtures/**/*.jpg
 !tests/fixtures/**/*.wav
 
+# Worker tooling
+deploy/worker/node_modules/
+deploy/worker/.wrangler/
+
 # OS noise
 .DS_Store
