@@ -13,9 +13,12 @@ from follow_the_duck.providers import cloudflare as cf
 from follow_the_duck.providers.base import ProviderError
 
 
+ACCOUNT_ID = "0123456789abcdef0123456789abcdef"
+
+
 def creds_cfg() -> Config:
     cfg = Config()
-    cfg.cloudflare_account_id = "acct"
+    cfg.cloudflare_account_id = ACCOUNT_ID
     cfg.cloudflare_api_token = "token"
     return cfg
 
@@ -52,6 +55,28 @@ def test_vision_requires_credentials():
         cf.CloudflareSpeech(Config())
 
 
+def test_token_pasted_as_account_id_gets_a_helpful_error():
+    """Real field mistake: the API token in CLOUDFLARE_ACCOUNT_ID produced an
+    HTTP 404 mid-mission. It must now fail at startup with the fix spelled
+    out, and without echoing the full secret."""
+    with pytest.raises(ProviderError) as exc:
+        cf.check_credentials("cfut_fIOJCCu18xRQ5Afb8HLaapLM", "token")
+    message = str(exc.value)
+    assert "CLOUDFLARE_API_TOKEN" in message  # points at the right field
+    assert "32 hex" in message
+    assert "fIOJCCu18xRQ5Afb8HLaapLM" not in message  # secret not echoed
+
+
+@pytest.mark.parametrize("bad", ["ACCT", "0123", "g" * 32, "0123456789abcdef" * 3])
+def test_malformed_account_id_rejected(bad):
+    with pytest.raises(ProviderError):
+        cf.check_credentials(bad, "token")
+
+
+def test_valid_account_id_accepted():
+    cf.check_credentials(ACCOUNT_ID, "token")  # must not raise
+
+
 def test_vision_url_and_answers(monkeypatch):
     captured = {}
 
@@ -66,8 +91,8 @@ def test_vision_url_and_answers(monkeypatch):
     )
     assert answers["present"]["noul"] == 0.9
     assert captured["url"] == (
-        "https://api.cloudflare.com/client/v4/accounts/acct/ai/run/"
-        "@cf/cloudflare/clef-flash"
+        "https://api.cloudflare.com/client/v4/accounts/%s/ai/run/"
+        "@cf/cloudflare/clef-flash" % ACCOUNT_ID
     )
     assert captured["token"] == "token"
 

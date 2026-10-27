@@ -123,12 +123,18 @@ def _run_mission(
 
 
 def cmd_find(args, cfg: Config) -> int:
-    runtime = build_runtime(
-        cfg,
-        dry_run=args.dry_run,
-        vision_script=Path(args.script) if args.script else None,
-        fixtures_dir=Path(args.fixtures) if args.fixtures else None,
-    )
+    from .providers.base import ProviderError
+
+    try:
+        runtime = build_runtime(
+            cfg,
+            dry_run=args.dry_run,
+            vision_script=Path(args.script) if args.script else None,
+            fixtures_dir=Path(args.fixtures) if args.fixtures else None,
+        )
+    except ProviderError as exc:
+        print("configuration problem: %s" % exc, file=sys.stderr)
+        return 2
     try:
         return _run_mission(runtime, args.target)
     finally:
@@ -151,9 +157,15 @@ def cmd_replay(args, cfg: Config) -> int:
 
 
 def cmd_listen(args, cfg: Config) -> int:
+    from .providers.base import ProviderError
+
     if getattr(args, "wake_word", False):
         cfg.wake_word_enabled = True
-    runtime = build_runtime(cfg, dry_run=args.dry_run)
+    try:
+        runtime = build_runtime(cfg, dry_run=args.dry_run)
+    except ProviderError as exc:
+        print("configuration problem: %s" % exc, file=sys.stderr)
+        return 2
     microphone = _make_microphone(cfg, args.dry_run)
     try:
         _write_pidfile(cfg)

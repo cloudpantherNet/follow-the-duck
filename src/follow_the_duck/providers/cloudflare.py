@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import threading
 import urllib.error
 import urllib.request
@@ -47,6 +48,27 @@ from .base import (
 
 _MAX_IMAGE_BYTES = 4 * 1024 * 1024
 _MAX_BODY_BYTES = 13 * 1024 * 1024
+
+#: Cloudflare account IDs are 32 lowercase hex characters.
+_ACCOUNT_ID_RE = re.compile(r"[0-9a-f]{32}")
+
+
+def check_credentials(account_id: str, api_token: str) -> None:
+    """Fail fast, with a human fix, instead of a confusing HTTP 404 later."""
+    if not account_id or not api_token:
+        raise ProviderError(
+            "CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN not configured"
+        )
+    if not _ACCOUNT_ID_RE.fullmatch(account_id):
+        hint = ""
+        if account_id.startswith(("cfut_", "cfapi_")) or len(account_id) > 32:
+            hint = " (this looks like an API token — that goes in CLOUDFLARE_API_TOKEN)"
+        raise ProviderError(
+            "CLOUDFLARE_ACCOUNT_ID %r is not a Cloudflare account ID%s. "
+            "Expected 32 hex characters — find it in the dashboard sidebar "
+            "under Workers & Pages, or in your dashboard URL."
+            % (account_id[:12] + "...", hint)
+        )
 
 
 class RateLimiter:
@@ -144,10 +166,7 @@ def build_clef_payload(
 
 class CloudflareVision(VisionProvider):
     def __init__(self, cfg: Config, now_fn=None) -> None:
-        if not cfg.cloudflare_account_id or not cfg.cloudflare_api_token:
-            raise ProviderError(
-                "CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN not configured"
-            )
+        check_credentials(cfg.cloudflare_account_id, cfg.cloudflare_api_token)
         self._cfg = cfg
         import time as _time
 
@@ -179,10 +198,7 @@ class CloudflareVision(VisionProvider):
 
 class CloudflareSpeech(SpeechProvider):
     def __init__(self, cfg: Config) -> None:
-        if not cfg.cloudflare_account_id or not cfg.cloudflare_api_token:
-            raise ProviderError(
-                "CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN not configured"
-            )
+        check_credentials(cfg.cloudflare_account_id, cfg.cloudflare_api_token)
         self._cfg = cfg
 
     def _url(self) -> str:

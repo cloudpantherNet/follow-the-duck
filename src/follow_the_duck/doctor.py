@@ -51,14 +51,23 @@ def run_checks(cfg: Config, online: bool = False, record: bool = False) -> List[
     add(CheckResult("config", FAIL if problems else OK,
                     "; ".join(problems) or "configuration values in range"))
 
-    # --- Credentials (presence only; never print the token) -----------------
-    has_creds = bool(cfg.cloudflare_account_id and cfg.cloudflare_api_token)
-    add(CheckResult(
-        "cloudflare-credentials", OK if has_creds else WARN,
-        "account+token configured (token hidden)" if has_creds
-        else "CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN not set — cloud "
-             "vision and speech unavailable; mock/replay still works",
-    ))
+    # --- Credentials (presence + format only; never print the token) --------
+    if cfg.cloudflare_account_id and cfg.cloudflare_api_token:
+        from .providers.base import ProviderError
+        from .providers.cloudflare import check_credentials
+
+        try:
+            check_credentials(cfg.cloudflare_account_id, cfg.cloudflare_api_token)
+            add(CheckResult("cloudflare-credentials", OK,
+                            "account+token configured (token hidden)"))
+        except ProviderError as exc:
+            add(CheckResult("cloudflare-credentials", FAIL, str(exc)))
+    else:
+        add(CheckResult(
+            "cloudflare-credentials", WARN,
+            "CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN not set — cloud "
+            "vision and speech unavailable; mock/replay still works",
+        ))
 
     # --- SunFounder stack ----------------------------------------------------
     if importlib.util.find_spec("picarx") is not None:
