@@ -8,13 +8,23 @@ ssh robot@classbot.local \
 ```
 
 `deploy/install.sh` handles the venv, package, wake-word extra + models,
-`.env` (with interactive credential prompts), the systemd service, and a
-final `ftd doctor`. Idempotent; flags `--no-wake-word`, `--no-service`,
-`--yes`. Update later with:
+`.env` (with interactive prompts for Cloudflare credentials and the
+dashboard URL/token — asked once, saved in `.env`, never asked again), the
+systemd service, and a final `ftd doctor`. Idempotent; flags
+`--no-wake-word`, `--no-service`, `--yes`.
+
+## Updating (no reinstall, no prompts)
 
 ```bash
-ssh robot@classbot.local 'cd ~/follow-the-duck && git pull && ./deploy/install.sh --yes'
+ssh robot@classbot.local 'cd ~/follow-the-duck && ./deploy/update.sh'
 ```
+
+`update.sh` is pull-and-restart only: `git pull --ff-only`, pip re-install
+*only* if `pyproject.toml` changed (the package is editable, so code updates
+need no pip), restart the `ftd` service if installed. It never touches
+`.env`, so credentials are entered exactly once in your robot's life.
+(Re-running `install.sh` is also always safe — it skips everything already
+configured.)
 
 ## Manual install (what the script does, step by step)
 

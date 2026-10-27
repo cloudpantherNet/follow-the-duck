@@ -125,6 +125,17 @@ if [ "$ASSUME_YES" -eq 0 ] && [ -t 0 ]; then
     echo
     [ -n "$TOKEN" ] && sed -i.bak "s|^CLOUDFLARE_API_TOKEN=.*|CLOUDFLARE_API_TOKEN=$TOKEN|" .env
   fi
+  if ! grep -q '^FTD_TELEMETRY_URL=' .env; then
+    printf 'Mission dashboard Worker URL (from deploy/worker/deploy.sh; Enter to skip): '
+    read -r TURL
+    if [ -n "$TURL" ]; then
+      echo "FTD_TELEMETRY_URL=$TURL" >> .env
+      printf 'Dashboard FTD_TOKEN (hidden): '
+      read -rs TTOKEN
+      echo
+      [ -n "$TTOKEN" ] && echo "FTD_TELEMETRY_TOKEN=$TTOKEN" >> .env
+    fi
+  fi
   rm -f .env.bak
 fi
 if [ -z "$(get_env CLOUDFLARE_ACCOUNT_ID)" ] || [ -z "$(get_env CLOUDFLARE_API_TOKEN)" ]; then
