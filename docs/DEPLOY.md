@@ -62,6 +62,9 @@ With the wake word enabled, audio never leaves the Pi until the phrase is
 detected locally (openWakeWord, built for the Pi 3) — in a noisy room this
 beats the loudness gate on both quota and false triggers:
 
+`./deploy/install.sh` sets all of this up automatically. The manual
+equivalent:
+
 ```bash
 cd ~/follow-the-duck
 .venv/bin/pip install -e '.[wakeword]'                     # openwakeword + onnxruntime
@@ -69,6 +72,16 @@ cd ~/follow-the-duck
 echo 'FTD_WAKE_WORD_ENABLED=true' >> .env
 .venv/bin/ftd doctor                                       # wake-word check must be OK
 sudo systemctl restart ftd
+```
+
+On **Python >= 3.13** (Debian 13 Trixie) the pip extra fails: openwakeword
+pins `tflite-runtime` on Linux, which has no wheels beyond Python 3.12, even
+though our ONNX inference path never uses it. The installer handles this
+automatically; manually it is:
+
+```bash
+.venv/bin/pip install --no-deps 'openwakeword>=0.6'
+.venv/bin/pip install numpy scipy scikit-learn tqdm requests onnxruntime
 ```
 
 Usage: say **"hey jarvis"** → the robot beeps → say **"find the yellow

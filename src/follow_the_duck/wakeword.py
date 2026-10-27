@@ -48,8 +48,9 @@ class OpenWakeWordDetector(WakeWordDetector):
             from openwakeword.model import Model
         except ImportError as exc:
             raise WakeWordError(
-                "openwakeword not installed — pip install -e '.[wakeword]' "
-                "(%s)" % exc
+                "openwakeword not installed — run ./deploy/install.sh (on "
+                "Python >= 3.13 the plain pip extra fails on tflite-runtime; "
+                "the installer falls back to an ONNX-only install) (%s)" % exc
             )
         self._np = numpy
         try:

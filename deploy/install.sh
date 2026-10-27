@@ -62,9 +62,31 @@ say "Installing follow-the-duck into the venv"
 
 # 3. Optional wake word ----------------------------------------------------------
 WAKEWORD_OK=0
+
+install_wakeword() {
+  # Already working (e.g. re-run after an earlier install)?
+  if "$PY" -c "from openwakeword.model import Model" >/dev/null 2>&1; then
+    return 0
+  fi
+  # Preferred: the packaged extra. This fails on Python >= 3.13 because
+  # openwakeword pins tflite-runtime on Linux and tflite-runtime has no
+  # wheels beyond 3.12 — even though the ONNX path we use never needs it.
+  if "$PY" -m pip install -q -e '.[wakeword]' 2>/dev/null; then
+    return 0
+  fi
+  warn "standard openwakeword install failed (its tflite-runtime dependency"
+  warn "has no wheel for this Python) — retrying ONNX-only install"
+  "$PY" -m pip install -q --no-deps 'openwakeword>=0.6' || return 1
+  # openwakeword's actual needs on the ONNX inference path (scikit-learn is
+  # imported unconditionally by its package __init__):
+  "$PY" -m pip install -q numpy scipy scikit-learn tqdm requests onnxruntime \
+    || return 1
+  "$PY" -c "from openwakeword.model import Model" >/dev/null 2>&1 || return 1
+}
+
 if [ "$NO_WAKEWORD" -eq 0 ]; then
   say "Installing on-device wake word (optional; failure is tolerated)"
-  if "$PY" -m pip install -q -e '.[wakeword]'; then
+  if install_wakeword; then
     say "Downloading openWakeWord models"
     if "$PY" -m follow_the_duck.wakeword --download; then
       WAKEWORD_OK=1
@@ -72,8 +94,8 @@ if [ "$NO_WAKEWORD" -eq 0 ]; then
       warn "model download failed (no internet?); re-run install later"
     fi
   else
-    warn "wake-word extra failed to install (no onnxruntime wheel for this"
-    warn "platform?) — hands-free mode will use the loudness gate instead"
+    warn "wake word unavailable on this platform — hands-free mode will"
+    warn "use the loudness gate instead (everything else works normally)"
   fi
 else
   say "Skipping wake word (--no-wake-word)"
