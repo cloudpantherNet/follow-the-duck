@@ -22,6 +22,9 @@ hardcode them.
 
 ## 2. Install this project (without disturbing system packages)
 
+**Shortcut:** `./deploy/install.sh` performs steps 2–4 (and the systemd
+service) in one go; the rest of this section is the manual equivalent.
+
 ```bash
 cd ~ && git clone <your-repo-url> follow-the-duck   # or scp, see DEPLOY.md
 cd follow-the-duck

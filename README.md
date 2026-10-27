@@ -73,21 +73,31 @@ The replay drives the full state machine with mock hardware and a scripted
 vision provider — you'll see it scan, pick open floor, reposition, acquire the
 target, approach, and declare `ARRIVED`.
 
-## Quick start on the robot
-
-See **docs/SETUP_PI.md** for the full guide. Summary:
+## Quick start on the robot — one command
 
 ```bash
-ssh robot@classbot.local            # IP/hostname is yours; nothing hardcoded
-cd ~/follow-the-duck
-python3 -m venv --system-site-packages .venv   # keeps SunFounder packages!
-.venv/bin/pip install -e .
-cp .env.example .env && nano .env   # Cloudflare account ID + API token
-.venv/bin/ftd doctor                # checks everything, moves nothing
-.venv/bin/ftd doctor --online       # + live clef/whisper smoke test
-.venv/bin/ftd find "yellow duck"    # typed mission (Enter = STOP)
-.venv/bin/ftd listen --loop         # push-to-talk missions
+ssh robot@classbot.local \
+  'git clone <repo-url> follow-the-duck 2>/dev/null; cd follow-the-duck && ./deploy/install.sh'
 ```
+
+`deploy/install.sh` does everything: venv (with `--system-site-packages`, so
+the SunFounder libraries keep working), package install, optional on-device
+wake word + model download, `.env` creation with credential prompts, the
+systemd service (hands-free listening at every boot), and a final
+`ftd doctor`. It is idempotent — updating later is
+`git pull && ./deploy/install.sh`. Flags: `--no-wake-word`, `--no-service`,
+`--yes` (non-interactive).
+
+After that the robot listens on its own at every boot. Manual use still works:
+
+```bash
+.venv/bin/ftd doctor --online       # live clef/whisper smoke test
+.venv/bin/ftd find "yellow duck"    # typed mission (Enter = STOP)
+.venv/bin/ftd listen --loop         # push-to-talk in a terminal
+.venv/bin/ftd stop                  # immediate local stop
+```
+
+Full manual walkthrough: **docs/SETUP_PI.md**.
 
 `ftd stop` (from any SSH session), pressing **Enter**, and `Ctrl-C` all stop
 the robot locally and immediately — the cloud is never the stop path.

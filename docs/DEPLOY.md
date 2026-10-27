@@ -1,8 +1,22 @@
 # Deployment & updates
 
-## Option A — Git (recommended)
+## One-command install (recommended)
 
-On the Pi, once:
+```bash
+ssh robot@classbot.local \
+  'git clone <repo-url> follow-the-duck 2>/dev/null; cd follow-the-duck && ./deploy/install.sh'
+```
+
+`deploy/install.sh` handles the venv, package, wake-word extra + models,
+`.env` (with interactive credential prompts), the systemd service, and a
+final `ftd doctor`. Idempotent; flags `--no-wake-word`, `--no-service`,
+`--yes`. Update later with:
+
+```bash
+ssh robot@classbot.local 'cd ~/follow-the-duck && git pull && ./deploy/install.sh --yes'
+```
+
+## Manual install (what the script does, step by step)
 
 ```bash
 cd ~ && git clone <your-repo-url> follow-the-duck
@@ -11,14 +25,6 @@ python3 -m venv --system-site-packages .venv
 .venv/bin/pip install -e .
 cp .env.example .env && nano .env
 ```
-
-Update later:
-
-```bash
-ssh robot@classbot.local 'cd ~/follow-the-duck && git pull && .venv/bin/pip install -e . -q'
-```
-
-(`pip install -e .` is only needed again if `pyproject.toml` changed.)
 
 ## Option B — SCP from the Mac (no Git remote needed)
 
