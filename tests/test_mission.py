@@ -72,6 +72,29 @@ def test_target_visible_ahead_is_approached_and_arrived(harness_factory):
     assert status.vision_calls >= 4
 
 
+def test_far_centered_target_gets_consecutive_pulses(harness_factory):
+    """A far target straight ahead earns several pulses per cloud look, so
+    the approach visibly progresses instead of inching once per inference."""
+    from follow_the_duck.telemetry import ListSink
+
+    script = [present(proximity="far"), present(proximity="far"),
+              present(proximity="mid"), present(proximity="near"),
+              present(proximity="very_close")]
+    h = harness_factory(script)
+    h.sensor.set_script(shrinking_sonar(h.chassis, start=250.0, step=25.0))
+    sink = ListSink()
+    h.mission._sink = sink
+    status = h.mission.run("yellow duck")
+    assert status.state == MissionState.ARRIVED
+    kinds = [e["kind"] for e in sink.events]
+    first_move = kinds.index("move")
+    # Three consecutive pulses with no observation between them.
+    assert kinds[first_move:first_move + 3] == ["move"] * 3
+    # Near the target it goes back to one pulse per look.
+    moves = [e for e in sink.events if e["kind"] == "move"]
+    assert all(m["ok"] for m in moves)
+
+
 def test_target_found_only_after_camera_scan(harness_factory):
     script = [
         absent(),            # pan 0
@@ -122,13 +145,23 @@ def test_direction_choice_follows_open_floor_right(harness_factory):
 
 
 def test_target_loss_stops_and_rescans_never_drives_blind(harness_factory):
-    script = [present(), present()] + [absent()]  # lost right after one pulse
+    from follow_the_duck.telemetry import ListSink
+
+    script = [present(), present()] + [absent()]  # lost right after approach
     h = harness_factory(script)
+    sink = ListSink()
+    h.mission._sink = sink
     status = h.mission.run("yellow duck")
     assert status.state in (MissionState.BLOCKED, MissionState.NOT_FOUND)
     assert not h.chassis.moving
-    drives = sum(1 for e in h.chassis.log if e[0] == "drive")
-    assert drives == 1  # exactly the one pulse before the loss; none after
+    # No movement after the loss: every move event precedes the first
+    # 'absent' observation (the rescan and the rest of the mission are
+    # camera-only).
+    kinds = [(e["kind"], e.get("presence")) for e in sink.events]
+    first_absent = next(i for i, (k, p) in enumerate(kinds)
+                        if k == "observation" and p == "absent")
+    assert all(k != "move" for k, _ in kinds[first_absent:])
+    assert any(k == "move" for k, _ in kinds[:first_absent])
 
 
 def test_nearby_unrelated_obstacle_is_not_arrival(harness_factory):

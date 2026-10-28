@@ -28,6 +28,7 @@ from .clock import Clock
 from .config import Config
 from .hardware.base import Chassis
 from .models import (
+    Bearing,
     Frame,
     MissionState,
     MissionStatus,
@@ -314,7 +315,21 @@ class MissionController:
                 )
                 near = approach_obs.proximity in (Proximity.NEAR, Proximity.VERY_CLOSE)
                 speed = self._cfg.approach_speed_near if near else self._cfg.drive_speed
-                ok, reason = self._move_pulse(steer, speed)
+                # A far, centered target gets several consecutive pulses per
+                # (slow) cloud look so approach visibly progresses; every
+                # pulse is still individually sonar-gated by the supervisor.
+                pulses = 1
+                if not near and approach_obs.bearing is Bearing.CENTER:
+                    pulses = max(1, self._cfg.approach_pulses_far)
+                ok, reason = True, ""
+                for _ in range(pulses):
+                    ok, reason = self._move_pulse(steer, speed)
+                    if not ok:
+                        break
+                    steps += 1
+                    blocked_retries = 0
+                    self._status.update(steps_taken=steps,
+                                        message="Moving toward the target.")
                 if not ok:
                     if self._stop_requested.is_set():
                         return finish(MissionState.STOPPED, "Stopped.")
@@ -333,10 +348,6 @@ class MissionController:
                             "Blocked on the way to the target. Please help me.",
                         )
                     self._supervisor.arm(self._mission_id)
-                else:
-                    steps += 1
-                    blocked_retries = 0
-                    self._status.update(steps_taken=steps, message="Moving toward the target.")
 
                 # Re-acquire after the pulse: look where we last saw it.
                 look_pan = 0.0
@@ -471,6 +482,10 @@ class MissionController:
         return True
 
     def _move_pulse(self, steer_deg: float, speed: int) -> Tuple[bool, str]:
+        # Prove liveness right before asking for motion: anything slow since
+        # the last observation (telemetry, status writes, speech) must never
+        # surface as a spurious "heartbeat expired" refusal.
+        self._supervisor.heartbeat()
         self._seq += 1
         command = MoveCommand(
             mission_id=self._mission_id,

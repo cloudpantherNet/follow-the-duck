@@ -92,16 +92,19 @@ class PicarxGrayscale(GrayscaleSensor):
 
 
 class EspeakSpeaker(SpeakerOut):
-    """Spoken status via espeak if installed; silently no-ops otherwise so
-    audio problems can never take a mission down."""
+    """Spoken status via espeak if installed; silently no-ops otherwise.
+
+    Fire-and-forget (Popen, never waited on): a 3-second utterance must not
+    stall the mission loop — a blocking say() once outlived the supervisor
+    heartbeat and got the first approach pulse refused."""
 
     def __init__(self, device: str = "default") -> None:
         self._device = device
 
     def say(self, text: str) -> None:
         try:
-            subprocess.run(
-                ["espeak", text], timeout=10,
+            subprocess.Popen(
+                ["espeak", text],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
         except Exception:
@@ -109,9 +112,10 @@ class EspeakSpeaker(SpeakerOut):
 
     def beep(self) -> None:
         try:
-            subprocess.run(
-                ["aplay", "-D", self._device, "-q", "/usr/share/sounds/alsa/Front_Center.wav"],
-                timeout=5, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            subprocess.Popen(
+                ["aplay", "-D", self._device, "-q",
+                 "/usr/share/sounds/alsa/Front_Center.wav"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
         except Exception:
             pass

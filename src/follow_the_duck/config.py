@@ -122,6 +122,11 @@ class Config:
     confirmations_to_arrive: int = 2
     ambiguity_threshold: float = 0.70
 
+    # A far, centered target earns several consecutive pulses before the next
+    # cloud look (the supervisor still sonar-gates every pulse); near targets
+    # go back to one-pulse-one-look.
+    approach_pulses_far: int = 3
+
     # --- Search budgets -------------------------------------------------------
     mission_time_budget_s: float = 90.0
     max_reposition_steps: int = 20
@@ -169,6 +174,8 @@ class Config:
             problems.append("arrival_cm should be >= obstacle_stop_cm")
         if not (0 <= self.absent_threshold < self.present_threshold <= 1):
             problems.append("need 0 <= absent_threshold < present_threshold <= 1")
+        if not (1 <= self.approach_pulses_far <= 5):
+            problems.append("approach_pulses_far must be within 1..5")
         for angle in self.scan_angles():
             if abs(angle) > 80:
                 problems.append("scan pan angle beyond +/-80 deg: %s" % angle)

@@ -111,6 +111,23 @@ async function handleEvents(url, env) {
   return json(events);
 }
 
+async function handleDeleteMission(url, env) {
+  const mission = url.searchParams.get("mission") || "";
+  if (!/^[a-z0-9-]{4,40}$/.test(mission)) return json({ error: "bad mission" }, 400);
+  let deleted = 0;
+  let cursor;
+  do {
+    const list = await env.FTD_LOG.list({ prefix: `ev:${mission}:`, limit: 1000, cursor });
+    for (const k of list.keys) {
+      await env.FTD_LOG.delete(k.name);
+      deleted++;
+    }
+    cursor = list.list_complete ? undefined : list.cursor;
+  } while (cursor);
+  await env.FTD_LOG.delete(`mission:${mission}`);
+  return json({ deleted });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -133,6 +150,9 @@ export default {
     }
     if (url.pathname === "/api/events" && request.method === "GET") {
       return handleEvents(url, env);
+    }
+    if (url.pathname === "/api/mission" && request.method === "DELETE") {
+      return handleDeleteMission(url, env);
     }
     return json({ error: "not found" }, 404);
   },
@@ -206,6 +226,8 @@ const HTML = `<!doctype html>
   <h1><span class="duck">&#129414;</span>Follow the Duck</h1>
   <span id="status" class="wait"><span class="dot"></span><span id="statustext">connecting&hellip;</span></span>
   <select id="missions" style="display:none"></select>
+  <button id="export" style="display:none" title="Download this mission's events as JSON (for debugging)">&#11015; Export</button>
+  <button id="del" style="display:none" title="Delete this mission's logs from the dashboard">&#128465; Delete</button>
   <label style="font-size:13px;color:var(--dim)"><input type="checkbox" id="live" checked> live</label>
   <input id="token" type="password" placeholder="access token" size="16">
   <button id="connect">Connect</button>
@@ -291,6 +313,8 @@ async function loadMissions(selectLatest) {
   setStatus("ok", "connected");
   const sel = $("missions");
   sel.style.display = "";
+  $("export").style.display = missions.length ? "" : "none";
+  $("del").style.display = missions.length ? "" : "none";
   const prev = current;
   sel.innerHTML = "";
   for (const m of missions) {
@@ -399,6 +423,33 @@ async function loadEvents() {
 $("connect").onclick = connect;
 $("token").addEventListener("keydown", (e) => { if (e.key === "Enter") connect(); });
 $("missions").onchange = () => { current = $("missions").value; lastCount = -1; loadEvents(); };
+
+$("export").onclick = async () => {
+  if (!current) return;
+  try {
+    const events = await api("/api/events?mission=" + current);
+    const blob = new Blob([JSON.stringify(events, null, 2)],
+                          { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "ftd-mission-" + current + ".json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (e) { banner("Export failed: " + e.message); }
+};
+
+$("del").onclick = async () => {
+  if (!current) return;
+  if (!confirm("Delete this mission's logs from the dashboard? (The robot is unaffected.)")) return;
+  try {
+    const resp = await fetch("/api/mission?mission=" + current + "&token=" +
+      encodeURIComponent($("token").value.trim()), { method: "DELETE" });
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    current = "";
+    lastCount = -1;
+    await loadMissions(true);
+  } catch (e) { banner("Delete failed: " + e.message); }
+};
 
 setInterval(() => {
   if (authed && $("live").checked && !document.hidden) loadMissions(false);
