@@ -1,5 +1,5 @@
 {
-  "name": "ftd-dashboard",
+  "name": "follow-the-duck-dashboard",
   "private": true,
   "description": "Follow the Duck mission dashboard (Cloudflare Worker)",
   "scripts": {

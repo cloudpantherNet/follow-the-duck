@@ -6,7 +6,7 @@
 #
 # Commit this file after deploy.sh fills in the KV id, so CI pipelines
 # (e.g. Cloudflare Workers Builds) can deploy without manual steps.
-name = "ftd-dashboard"
+name = "follow-the-duck"
 main = "worker.js"
 compatibility_date = "2026-10-01"
 

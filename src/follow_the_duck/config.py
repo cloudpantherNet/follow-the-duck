@@ -127,7 +127,7 @@ class Config:
     w_steer_cost: float = 0.15
 
     # --- Mission telemetry dashboard (optional; see deploy/worker/) ----------
-    telemetry_url: str = ""    # e.g. https://ftd-dashboard.<you>.workers.dev
+    telemetry_url: str = ""    # e.g. https://follow-the-duck.<you>.workers.dev
     telemetry_token: str = ""  # shared secret; same as the Worker's FTD_TOKEN
     telemetry_send_images: bool = True
 

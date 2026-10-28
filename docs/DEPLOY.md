@@ -147,7 +147,7 @@ in the committed `wrangler.toml`).
 ### Deploy — no tooling (dashboard paste)
 
 1. Cloudflare dashboard → **Workers & Pages → Create Worker**, paste
-   `deploy/worker/worker.js`, name it e.g. `ftd-dashboard`.
+   `deploy/worker/worker.js`, name it e.g. `follow-the-duck`.
 2. Worker → **Settings → Variables and Secrets**: add secret `FTD_TOKEN`
    (any long random string, e.g. `openssl rand -hex 24`).
 3. Worker → **Settings → Bindings**: add a **KV namespace** binding named
@@ -156,7 +156,7 @@ in the committed `wrangler.toml`).
 Then on the robot, in `.env`:
 
 ```bash
-FTD_TELEMETRY_URL=https://ftd-dashboard.<your-account>.workers.dev
+FTD_TELEMETRY_URL=https://follow-the-duck.<your-account>.workers.dev
 FTD_TELEMETRY_TOKEN=<the same secret>
 ```
 
