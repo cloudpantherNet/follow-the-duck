@@ -15,4 +15,4 @@ keep_vars = true
 
 [[kv_namespaces]]
 binding = "FTD_LOG"
-id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+id = "d1b74b7952934c1ebec8a11ce2513c52"
