@@ -197,8 +197,10 @@ def run_checks(cfg: Config, online: bool = False, record: bool = False) -> List[
 
     # --- Telemetry dashboard (optional) --------------------------------------------
     if cfg.telemetry_url and cfg.telemetry_token:
-        add(CheckResult("telemetry", OK,
-                        "dashboard configured: %s (token hidden)" % cfg.telemetry_url))
+        add(CheckResult(
+            "telemetry", OK,
+            "dashboard configured: %s (token hidden, %d chars)"
+            % (cfg.telemetry_url, len(cfg.telemetry_token))))
     elif cfg.telemetry_url or cfg.telemetry_token:
         add(CheckResult("telemetry", WARN,
                         "set BOTH FTD_TELEMETRY_URL and FTD_TELEMETRY_TOKEN"))

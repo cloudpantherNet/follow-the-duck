@@ -25,6 +25,14 @@ def load_dotenv(path: Path) -> Dict[str, str]:
             continue
         key, _, value = line.partition("=")
         key = key.strip()
+        value = value.strip()
+        # Drop an unquoted inline comment ("TOKEN=abc  # note") — but only
+        # when preceded by whitespace, so values containing '#' still work.
+        if not (value.startswith("'") or value.startswith('"')):
+            for i, ch in enumerate(value):
+                if ch == "#" and i > 0 and value[i - 1] in " \t":
+                    value = value[:i]
+                    break
         value = value.strip().strip("'\"")
         if key and key not in os.environ:
             values[key] = value

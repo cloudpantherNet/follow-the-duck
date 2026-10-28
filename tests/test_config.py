@@ -36,6 +36,27 @@ def test_dotenv_parse_and_precedence(monkeypatch, tmp_path):
     assert cfg.cloudflare_api_token == "secret-from-file"
 
 
+def test_dotenv_strips_inline_comments_and_whitespace(monkeypatch, tmp_path):
+    """Field bug: a trailing '# comment' on the token line was sent to the
+    server as part of the token (401s). Unquoted inline comments and edge
+    whitespace must be stripped; '#' inside a value must survive."""
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "FTD_TELEMETRY_TOKEN=abc123   # same value as the Worker secret\n"
+        "FTD_TELEMETRY_URL=https://x.workers.dev \n"
+        "FTD_MIC_DEVICE=plughw:1,0#hash-no-space-kept\n"
+        'CLOUDFLARE_API_TOKEN="quoted # kept"\n'
+    )
+    for key in ("FTD_TELEMETRY_TOKEN", "FTD_TELEMETRY_URL",
+                "FTD_MIC_DEVICE", "CLOUDFLARE_API_TOKEN"):
+        monkeypatch.delenv(key, raising=False)
+    values = load_dotenv(env_file)
+    assert values["FTD_TELEMETRY_TOKEN"] == "abc123"
+    assert values["FTD_TELEMETRY_URL"] == "https://x.workers.dev"
+    assert values["FTD_MIC_DEVICE"] == "plughw:1,0#hash-no-space-kept"
+    assert values["CLOUDFLARE_API_TOKEN"] == "quoted # kept"
+
+
 def test_validate_flags_bad_values():
     cfg = Config()
     cfg.max_steer_deg = 90.0
