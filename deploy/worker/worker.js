@@ -118,6 +118,11 @@ export default {
       return new Response(HTML, { headers: { "content-type": "text/html;charset=utf-8" } });
     }
     if (!url.pathname.startsWith("/api/")) return json({ error: "not found" }, 404);
+    // Unauthenticated liveness probe so the UI can distinguish "worker is
+    // down" from "token mismatch". Reveals nothing but existence.
+    if (url.pathname === "/api/ping") {
+      return json({ ok: true, worker: "follow-the-duck", hasToken: Boolean(env.FTD_TOKEN) });
+    }
     if (!authorized(request, url, env)) return json({ error: "unauthorized" }, 401);
     if (url.pathname === "/api/health") return json({ ok: true });
     if (url.pathname === "/api/events" && request.method === "POST") {
@@ -145,14 +150,27 @@ const HTML = `<!doctype html>
   * { box-sizing:border-box; margin:0; }
   body { background:var(--bg); color:var(--text);
          font:15px/1.5 system-ui, -apple-system, sans-serif; }
-  header { display:flex; gap:12px; align-items:center; flex-wrap:wrap;
-           padding:14px 18px; border-bottom:1px solid var(--line);
+  header { display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+           padding:12px 18px; border-bottom:1px solid var(--line);
            position:sticky; top:0; background:var(--bg); z-index:2; }
-  h1 { font-size:18px; } h1 .duck { margin-right:6px; }
+  h1 { font-size:17px; margin-right:auto; } h1 .duck { margin-right:6px; }
   select, input, button { background:var(--card); color:var(--text);
     border:1px solid var(--line); border-radius:8px; padding:7px 10px;
     font:inherit; }
-  button { cursor:pointer; } button.live { border-color:var(--accent); }
+  select { max-width:320px; }
+  button { cursor:pointer; }
+  #status { display:inline-flex; align-items:center; gap:7px; padding:5px 12px;
+    border-radius:99px; border:1px solid var(--line); font-size:13px; }
+  #status .dot { width:9px; height:9px; border-radius:99px; background:var(--dim); }
+  #status.ok .dot { background:var(--ok); }
+  #status.bad .dot { background:var(--bad); }
+  #status.wait .dot { background:var(--accent); animation:pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity:.3; } }
+  #banner { display:none; margin:14px auto 0; max-width:860px;
+    background:#3a1d1d; border:1px solid #6b2f2f; color:#ffd9d9;
+    border-radius:10px; padding:12px 16px; font-size:14px; white-space:pre-line; }
+  #banner.show { display:block; }
+  #banner code { background:#00000040; padding:1px 6px; border-radius:5px; }
   main { max-width:860px; margin:0 auto; padding:18px; display:flex;
          flex-direction:column; gap:12px; }
   .card { background:var(--card); border:1px solid var(--line);
@@ -176,58 +194,123 @@ const HTML = `<!doctype html>
   td, th { padding:3px 10px 3px 0; text-align:left; color:var(--dim); }
   td.chosen { color:var(--accent); font-weight:600; }
   .t { color:var(--dim); font-size:12px; float:right; }
-  #empty { color:var(--dim); text-align:center; padding:40px; }
+  #empty { color:var(--dim); text-align:center; padding:48px 20px;
+           line-height:2; }
+  #empty code { background:var(--card); border:1px solid var(--line);
+                padding:2px 8px; border-radius:6px; }
+  #meta { color:var(--dim); font-size:12px; text-align:center; padding:4px 0 24px; }
 </style>
 </head>
 <body>
 <header>
-  <h1><span class="duck">&#129414;</span>Follow the Duck — Mission Log</h1>
-  <select id="missions"></select>
-  <button id="refresh">Refresh</button>
-  <button id="live" class="live">Live: on</button>
-  <input id="token" type="password" placeholder="access token" size="14">
+  <h1><span class="duck">&#129414;</span>Follow the Duck</h1>
+  <span id="status" class="wait"><span class="dot"></span><span id="statustext">connecting&hellip;</span></span>
+  <select id="missions" style="display:none"></select>
+  <label style="font-size:13px;color:var(--dim)"><input type="checkbox" id="live" checked> live</label>
+  <input id="token" type="password" placeholder="access token" size="16">
+  <button id="connect">Connect</button>
 </header>
-<main id="feed"><div id="empty">Enter the access token to load missions.</div></main>
+<div id="banner"></div>
+<main id="feed"></main>
+<div id="meta"></div>
 <script>
 const $ = (id) => document.getElementById(id);
-let live = true, current = "";
+let current = "", lastCount = -1, lastFetch = 0, authed = false;
 $("token").value = localStorage.getItem("ftd_token") || "";
-$("token").addEventListener("change", () => {
-  localStorage.setItem("ftd_token", $("token").value); loadMissions(true);
-});
-$("refresh").onclick = () => loadMissions(false);
-$("live").onclick = () => { live = !live; $("live").textContent = "Live: " + (live ? "on" : "off"); };
-$("missions").onchange = () => { current = $("missions").value; loadEvents(); };
+
+function setStatus(cls, text) {
+  $("status").className = cls;
+  $("statustext").textContent = text;
+}
+function banner(text) {
+  $("banner").textContent = text || "";
+  $("banner").className = text ? "show" : "";
+}
+function empty(html) { $("feed").innerHTML = '<div id="empty">' + html + "</div>"; }
 
 async function api(path) {
-  const token = $("token").value.trim();
-  if (!token) return null;
   const sep = path.includes("?") ? "&" : "?";
-  const resp = await fetch(path + sep + "token=" + encodeURIComponent(token));
-  if (!resp.ok) throw new Error("HTTP " + resp.status);
+  const resp = await fetch(path + sep + "token=" +
+    encodeURIComponent($("token").value.trim()));
+  if (!resp.ok) { const e = new Error("HTTP " + resp.status); e.status = resp.status; throw e; }
   return resp.json();
 }
 
-async function loadMissions(selectLatest) {
+async function connect() {
+  localStorage.setItem("ftd_token", $("token").value.trim());
+  authed = false;
+  banner("");
+  setStatus("wait", "connecting\\u2026");
+  let ping;
   try {
-    const missions = await api("/api/missions");
-    if (!missions) return;
-    const sel = $("missions");
-    const prev = current;
-    sel.innerHTML = "";
-    for (const m of missions) {
-      const opt = document.createElement("option");
-      opt.value = m.mission_id;
-      const when = m.first_seen ? new Date(m.first_seen).toLocaleTimeString() : "";
-      opt.textContent = (m.target || "?") + " — " + (m.state || "…") + " — " + when;
-      sel.appendChild(opt);
+    ping = await (await fetch("/api/ping")).json();
+  } catch (e) {
+    setStatus("bad", "worker unreachable");
+    banner("Could not reach the Worker at all. Check your network, then reload.");
+    return;
+  }
+  if (!ping.hasToken) {
+    setStatus("bad", "no secret on Worker");
+    banner('This Worker has NO FTD_TOKEN secret, so it rejects everyone.\\n' +
+      "Fix: Cloudflare dashboard \\u2192 Workers & Pages \\u2192 follow-the-duck \\u2192 " +
+      "Settings \\u2192 Variables and Secrets \\u2192 add secret FTD_TOKEN with the value from " +
+      "the robot's .env (FTD_TELEMETRY_TOKEN). Or from the Mac: " +
+      "cd deploy/worker && printf '%s' '<token>' | npx wrangler secret put FTD_TOKEN");
+    return;
+  }
+  if (!$("token").value.trim()) {
+    setStatus("bad", "token needed");
+    empty("Enter the access token (the robot's <code>FTD_TELEMETRY_TOKEN</code>) and press Connect.");
+    return;
+  }
+  try {
+    await api("/api/health");
+  } catch (e) {
+    if (e.status === 401) {
+      setStatus("bad", "wrong token");
+      banner("The Worker is up, but this token does not match its FTD_TOKEN secret.\\n" +
+        "On the robot: grep '^FTD_TELEMETRY_TOKEN=' ~/follow-the-duck/.env \\u2014 paste that " +
+        "exact value here AND into the Worker secret (Settings \\u2192 Variables and Secrets). " +
+        "Watch for stray spaces/newlines when pasting.");
+    } else {
+      setStatus("bad", "error " + (e.status || ""));
+      banner("Unexpected error talking to the Worker: " + e.message);
     }
-    if (missions.length) {
-      current = (selectLatest || !prev) ? missions[0].mission_id : prev;
-      sel.value = current;
-      loadEvents();
-    }
-  } catch (e) { $("feed").innerHTML = '<div id="empty">' + e + "</div>"; }
+    return;
+  }
+  authed = true;
+  setStatus("ok", "connected");
+  await loadMissions(true);
+}
+
+async function loadMissions(selectLatest) {
+  if (!authed) return;
+  let missions;
+  try { missions = await api("/api/missions"); }
+  catch (e) { setStatus("bad", "lost connection"); return; }
+  setStatus("ok", "connected");
+  const sel = $("missions");
+  sel.style.display = "";
+  const prev = current;
+  sel.innerHTML = "";
+  for (const m of missions) {
+    const opt = document.createElement("option");
+    opt.value = m.mission_id;
+    const when = m.first_seen ? new Date(m.first_seen).toLocaleTimeString() : "";
+    opt.textContent = (m.target || "?") + " \\u2014 " + (m.state || "\\u2026") + " \\u2014 " + when;
+    sel.appendChild(opt);
+  }
+  if (!missions.length) {
+    empty("Connected \\u2014 no missions logged yet.<br>" +
+      "On the robot, run <code>ftd find \\u0022yellow duck\\u0022</code> and this page will " +
+      "fill in. (The feed can lag the robot by up to a minute \\u2014 storage syncs " +
+      "across Cloudflare's network.)");
+    return;
+  }
+  const keepSelection = prev && missions.some((m) => m.mission_id === prev);
+  current = (selectLatest || !keepSelection) ? missions[0].mission_id : prev;
+  sel.value = current;
+  await loadEvents();
 }
 
 function bar(label, p) {
@@ -236,75 +319,95 @@ function bar(label, p) {
     '%</span><div class="track"><div class="fill" style="width:' + pct + '%"></div></div></div>';
 }
 
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+}
+
 function render(events) {
-  const feed = $("feed");
-  if (!events.length) { feed.innerHTML = '<div id="empty">No events yet.</div>'; return; }
+  if (events.length === lastCount) return; // nothing new: no flicker
+  lastCount = events.length;
+  if (!events.length) {
+    empty("Mission selected, but its events have not synced here yet.<br>" +
+      "They usually appear within a minute \\u2014 leave live mode on.");
+    return;
+  }
   const parts = [];
   for (const ev of events) {
-    const t = '<span class="t">t+' + (ev.t || 0).toFixed(1) + 's</span>';
+    const t = '<span class="t">t+' + (ev.t || 0).toFixed(1) + "s</span>";
     if (ev.kind === "mission_start") {
-      parts.push('<div class="card">' + t + '&#127919; Mission started: <b>find the ' +
+      parts.push('<div class="card">' + t + "&#127919; Mission started: <b>find the " +
         esc(ev.target) + "</b></div>");
     } else if (ev.kind === "observation") {
       const img = ev.image_b64 ?
-        '<img src="data:image/jpeg;base64,' + ev.image_b64 + '">' : "";
+        '<img loading="lazy" src="data:image/jpeg;base64,' + ev.image_b64 + '">' : "";
       parts.push('<div class="card">' + t +
         '<span class="chip ' + ev.presence + '">' + ev.presence + " " +
-        Math.round((ev.confidence||0)*100) + "%</span>" +
+        Math.round((ev.confidence || 0) * 100) + "%</span>" +
         '<span class="chip">pan ' + ev.pan_deg + "&deg;</span>" +
-        '<span class="chip">' + esc(ev.bearing||"") + "</span>" +
-        '<span class="chip">' + esc(ev.proximity||"") + "</span>" +
+        '<span class="chip">' + esc(ev.bearing || "") + "</span>" +
+        '<span class="chip">' + esc(ev.proximity || "") + "</span>" +
         '<div class="row" style="margin-top:8px">' + img +
         '<div style="flex:1;min-width:200px"><div class="k">Is the floor clear?</div>' +
-        '<div class="bars">' + bar("left", (ev.floor_clear||{}).left) +
-        bar("center", (ev.floor_clear||{}).center) +
-        bar("right", (ev.floor_clear||{}).right) + "</div>" +
+        '<div class="bars">' + bar("left", (ev.floor_clear || {}).left) +
+        bar("center", (ev.floor_clear || {}).center) +
+        bar("right", (ev.floor_clear || {}).right) + "</div>" +
         '<div class="k" style="margin-top:8px">AI time: ' +
-        ((ev.latency||{}).inference_s||0).toFixed(2) + "s &middot; ambiguity " +
-        Math.round((ev.ambiguity||0)*100) + "%</div></div></div></div>");
+        ((ev.latency || {}).inference_s || 0).toFixed(2) + "s &middot; ambiguity " +
+        Math.round((ev.ambiguity || 0) * 100) + "%</div></div></div></div>");
     } else if (ev.kind === "decision") {
       let rows = "";
       for (const c of ev.candidates || []) {
         rows += "<tr><td" + (c.direction === ev.chosen ? ' class="chosen"' : "") + ">" +
-          c.direction + "</td><td>" + (c.floor_p*100).toFixed(0) + "%</td><td>" +
+          c.direction + "</td><td>" + (c.floor_p * 100).toFixed(0) + "%</td><td>" +
           c.score.toFixed(2) + "</td><td>" + (c.feasible ? "yes" : "no") + "</td></tr>";
       }
       parts.push('<div class="card">' + t + "&#129504; Where should I go? chosen: <b>" +
-        esc(ev.chosen || "nowhere — blocked") + "</b>" +
-        '<table><tr><th>direction</th><th>open floor</th><th>score</th><th>feasible</th></tr>' +
+        esc(ev.chosen || "nowhere \\u2014 blocked") + "</b>" +
+        "<table><tr><th>direction</th><th>open floor</th><th>score</th><th>feasible</th></tr>" +
         rows + "</table></div>");
     } else if (ev.kind === "move") {
       parts.push('<div class="card">' + t + (ev.ok ?
         '<span class="move-ok">&#9654; moved</span>' :
         '<span class="move-no">&#9632; refused</span>') +
-        ' steer ' + ev.steer_deg + "&deg; @ power " + ev.speed +
+        " steer " + ev.steer_deg + "&deg; @ power " + ev.speed +
         ' <span class="k">(' + esc(ev.reason) +
         (ev.range_cm != null ? ", sonar " + Math.round(ev.range_cm) + " cm" : ", sonar invalid") +
         ")</span></div>");
     } else if (ev.kind === "state") {
       parts.push('<div class="card">' + t + "&#128064; <b>Target acquired!</b> bearing " +
-        esc(ev.bearing || "?") + " at pan " + (ev.pan_deg||0) + "&deg;</div>");
+        esc(ev.bearing || "?") + " at pan " + (ev.pan_deg || 0) + "&deg;</div>");
     } else if (ev.kind === "mission_end") {
       parts.push('<div class="card">' + t + '<span class="chip end">' + esc(ev.state) +
         "</span> " + esc(ev.message) + ' <div class="k">steps ' + ev.steps +
         " &middot; vision calls " + ev.vision_calls + " &middot; " + ev.elapsed_s + "s</div></div>");
     }
   }
-  feed.innerHTML = parts.join("");
-}
-
-function esc(s) {
-  return String(s ?? "").replace(/[&<>"']/g, (c) =>
-    ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+  $("feed").innerHTML = parts.join("");
+  window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
 }
 
 async function loadEvents() {
-  if (!current) return;
-  try { render(await api("/api/events?mission=" + current) || []); } catch {}
+  if (!current || !authed) return;
+  try {
+    const events = await api("/api/events?mission=" + current);
+    lastFetch = Date.now();
+    render(events);
+  } catch (e) { /* transient; next tick retries */ }
 }
 
-setInterval(() => { if (live) loadMissions(false); }, 5000);
-loadMissions(true);
+$("connect").onclick = connect;
+$("token").addEventListener("keydown", (e) => { if (e.key === "Enter") connect(); });
+$("missions").onchange = () => { current = $("missions").value; lastCount = -1; loadEvents(); };
+
+setInterval(() => {
+  if (authed && $("live").checked && !document.hidden) loadMissions(false);
+  if (lastFetch) {
+    $("meta").textContent = "last updated " +
+      Math.round((Date.now() - lastFetch) / 1000) + "s ago \\u00b7 feed may lag the robot by up to ~1 min";
+  }
+}, 4000);
+connect();
 </script>
 </body>
 </html>`;
